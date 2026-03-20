@@ -1,0 +1,31 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.venv/
+venv/
+*.egg-info/
+dist/
+build/
+
+# Ambiente
+.env
+.env.*
+
+# PDFs gerados
+etiquetas_geradas/
+
+# Dumps do banco
+*.sql
+
+# Assets (logos reais — não versionar)
+assets/*.png
+assets/*.jpg
+assets/*.jpeg
+
+# VS Code
+.vscode/
+
+# Sistema
+.DS_Store
+Thumbs.db

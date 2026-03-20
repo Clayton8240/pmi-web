@@ -1,0 +1,241 @@
+{% extends "base.html" %}
+{% block title %}Gerar Lote — PMI{% endblock %}
+{% block page_title %}Gerar Lote de Etiquetas{% endblock %}
+
+{% block content %}
+<div class="max-w-5xl space-y-6">
+
+  <!-- Campanha ativa -->
+  {% if campanha %}
+  <div class="bg-blue-50 border border-blue-200 rounded-xl px-5 py-3 flex items-center justify-between">
+    <div class="flex items-center gap-3">
+      <span class="w-2 h-2 rounded-full bg-blue-500 inline-block"></span>
+      <span class="text-sm font-medium text-blue-800">Campanha ativa: <b>{{ campanha.nome }}</b></span>
+    </div>
+    <div class="flex gap-2">
+      {% for c in campanhas %}
+      {% if c.id != campanha.id %}
+      <a href="/etiquetas/lote?campanha_id={{ c.id }}"
+         class="text-xs text-blue-600 hover:underline border border-blue-200 rounded px-2 py-0.5">{{ c.nome }}</a>
+      {% endif %}
+      {% endfor %}
+      <a href="/importacao" class="text-xs text-gray-500 hover:underline border border-gray-200 rounded px-2 py-0.5">Nova campanha →</a>
+    </div>
+  </div>
+  {% else %}
+  <div class="bg-amber-50 border border-amber-200 rounded-xl px-5 py-4 text-sm text-amber-800">
+    ⚠️ Nenhuma campanha ativa. <a href="/importacao" class="underline font-medium">Crie uma campanha e importe uma planilha →</a>
+  </div>
+  {% endif %}
+
+  <!-- Stats da campanha -->
+  <div class="grid grid-cols-3 gap-4">
+    <div class="bg-white rounded-xl border border-gray-200 p-4 flex items-center gap-4">
+      <div class="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center text-blue-700 font-bold text-lg">
+        {{ cds_info|length }}
+      </div>
+      <div>
+        <div class="text-sm font-medium text-gray-700">CDs na campanha</div>
+        <div class="text-xs text-gray-400">regiões ativas</div>
+      </div>
+    </div>
+    <div class="bg-white rounded-xl border border-gray-200 p-4 flex items-center gap-4">
+      <div class="w-10 h-10 bg-green-100 rounded-lg flex items-center justify-center text-green-700 font-bold text-lg">
+        {{ total_caixas }}
+      </div>
+      <div>
+        <div class="text-sm font-medium text-gray-700">Etiquetas a gerar</div>
+        <div class="text-xs text-gray-400">total de caixas</div>
+      </div>
+    </div>
+    <div class="bg-white rounded-xl border border-gray-200 p-4 flex items-center gap-4">
+      <div class="w-10 h-10 bg-amber-100 rounded-lg flex items-center justify-center text-amber-700 font-bold text-lg">
+        #{{ prox_caixa }}
+      </div>
+      <div>
+        <div class="text-sm font-medium text-gray-700">Próximo Nº de Caixa</div>
+        <div class="text-xs text-gray-400">numeração sequencial</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Formulário da campanha -->
+  <form
+    id="form-lote"
+    hx-post="/etiquetas/lote"
+    hx-target="#resultado"
+    hx-swap="innerHTML"
+    hx-indicator="#spinner-lote"
+    class="bg-white rounded-xl border border-gray-200 p-6 space-y-4"
+  >
+    <input type="hidden" name="campanha_id" value="{{ campanha.id if campanha else '' }}">
+    <h2 class="text-base font-semibold text-gray-800">Dados comuns a todas as etiquetas</h2>
+
+    <div class="grid grid-cols-3 gap-4">
+      <div>
+        <label class="block text-xs font-medium text-gray-600 mb-1">Projeto / Campanha</label>
+        <input
+          type="text"
+          name="projeto"
+          value="{{ campanha.nome if campanha else '' }}"
+          placeholder="Ex: PMI Q1 2026"
+          class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+        >
+      </div>
+      <div>
+        <label class="block text-xs font-medium text-gray-600 mb-1">Embalagem</label>
+        <input
+          type="text"
+          name="embalagem"
+          placeholder="Ex: CAIXA"
+          class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+        >
+      </div>
+      <div>
+        <label class="block text-xs font-medium text-gray-600 mb-1">Transportador</label>
+        <input
+          type="text"
+          name="transportador"
+          value="{{ transportador_padrao }}"
+          class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+        >
+      </div>
+    </div>
+
+    <div class="flex items-center justify-between pt-2 border-t border-gray-100">
+      <p class="text-xs text-gray-400">
+        Campanha: <b class="text-gray-700">{{ campanha.nome if campanha else '—' }}</b> ·
+        Serão geradas <b class="text-gray-700">{{ total_caixas }} etiqueta(s)</b> para
+        <b class="text-gray-700">{{ cds_info|length }} CD(s)</b>.
+        Um PDF unificado será gerado para impressão direta.
+      </p>
+      <button
+        type="submit"
+        class="bg-green-600 hover:bg-green-700 text-white px-8 py-2.5 rounded-lg text-sm font-semibold transition-colors flex items-center gap-2 shrink-0"
+      >
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"/>
+        </svg>
+        Gerar Lote Completo ({{ total_caixas }})
+        <span id="spinner-lote" class="htmx-indicator">
+          <svg class="animate-spin w-4 h-4" fill="none" viewBox="0 0 24 24">
+            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
+            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
+          </svg>
+        </span>
+      </button>
+    </div>
+  </form>
+
+  <!-- Barra de progresso (visível apenas durante geração) -->
+  <div id="progresso-lote" class="hidden bg-white rounded-xl border border-gray-200 p-6">
+    <div class="flex items-center justify-between mb-2">
+      <span class="text-sm font-medium text-gray-700">Gerando etiquetas...</span>
+      <span id="pct-texto" class="text-sm font-bold text-blue-600">0%</span>
+    </div>
+    <div class="w-full bg-gray-100 rounded-full h-3 overflow-hidden">
+      <div id="barra-progresso"
+           class="h-3 bg-blue-500 rounded-full transition-all duration-300"
+           style="width: 0%"></div>
+    </div>
+    <p class="text-xs text-gray-400 mt-2">Cada página PDF é gerada individualmente — aguarde a conclusão.</p>
+  </div>
+
+  <!-- Área do resultado HTMX -->
+  <div id="resultado"></div>
+
+  <!-- Preview dos CDs -->
+  <div class="bg-white rounded-xl border border-gray-200 overflow-hidden">
+    <div class="px-5 py-3 border-b border-gray-100">
+      <h3 class="font-semibold text-gray-800 text-sm">CDs da campanha</h3>
+    </div>
+    <div class="overflow-x-auto">
+      <table class="w-full text-sm">
+        <thead class="bg-gray-50 text-xs text-gray-500 uppercase tracking-wide">
+          <tr>
+            <th class="px-4 py-2.5 text-left">Ctrl MMBR</th>
+            <th class="px-4 py-2.5 text-left">Regional</th>
+            <th class="px-4 py-2.5 text-left">Cidade/UF</th>
+            <th class="px-4 py-2.5 text-left">Filial</th>
+            <th class="px-4 py-2.5 text-center">Itens</th>
+            <th class="px-4 py-2.5 text-center">Volume</th>
+            <th class="px-4 py-2.5 text-center">Caixas</th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-gray-50">
+          {% for info in cds_info %}
+          <tr class="hover:bg-gray-50">
+            <td class="px-4 py-2 font-mono font-bold text-blue-700">{{ info.cd.id }}</td>
+            <td class="px-4 py-2 text-gray-700">{{ info.cd.regional or '—' }}</td>
+            <td class="px-4 py-2 text-gray-700">
+              {{ info.cd.cidade or '—' }}/{{ info.cd.uf or '—' }}
+            </td>
+            <td class="px-4 py-2 text-gray-500 text-xs max-w-xs truncate">{{ info.cd.filial or '—' }}</td>
+            <td class="px-4 py-2 text-center text-gray-600">{{ info.num_itens }}</td>
+            <td class="px-4 py-2 text-center">
+              {% if info.volume_texto %}
+                <span class="bg-blue-50 text-blue-700 px-2 py-0.5 rounded text-xs">{{ info.volume_texto }}</span>
+              {% else %}
+                <span class="text-gray-300 text-xs">—</span>
+              {% endif %}
+            </td>
+            <td class="px-4 py-2 text-center font-semibold text-gray-700">{{ info.num_caixas }}</td>
+          </tr>
+          {% else %}
+          <tr>
+            <td colspan="7" class="px-4 py-10 text-center text-gray-400 text-sm">
+              Nenhum CD ativo cadastrado.
+              <a href="/cds" class="text-blue-500 hover:underline ml-1">Importar CDs →</a>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+
+
+</div>
+
+<script>
+(function () {
+  var interval = null;
+  var pct = 0;
+  var totalCaixas = {{ total_caixas | default(1) }};
+
+  document.getElementById('form-lote').addEventListener('htmx:beforeRequest', function () {
+    pct = 0;
+    document.getElementById('progresso-lote').classList.remove('hidden');
+    document.getElementById('barra-progresso').style.width = '0%';
+    document.getElementById('pct-texto').textContent = '0%';
+
+    // 0→90% ao longo do tempo estimado (mín 3s, ~0.6s por etiqueta)
+    var duracaoMs = Math.max(3000, totalCaixas * 600);
+    var stepMs = duracaoMs / 90;
+
+    interval = setInterval(function () {
+      if (pct < 90) {
+        pct++;
+        document.getElementById('barra-progresso').style.width = pct + '%';
+        document.getElementById('pct-texto').textContent = pct + '% concluído...';
+      }
+    }, stepMs);
+  });
+
+  document.addEventListener('htmx:afterSwap', function (e) {
+    if (e.detail && e.detail.target && e.detail.target.id === 'resultado') {
+      if (interval) { clearInterval(interval); interval = null; }
+      var barra = document.getElementById('barra-progresso');
+      var texto = document.getElementById('pct-texto');
+      if (barra) { barra.style.width = '100%'; texto.textContent = '100% concluído!'; }
+      setTimeout(function () {
+        var p = document.getElementById('progresso-lote');
+        if (p) p.classList.add('hidden');
+      }, 1500);
+    }
+  });
+}());
+</script>
+{% endblock %}

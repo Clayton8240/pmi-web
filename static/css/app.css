@@ -1,0 +1,9 @@
+/* Estilos customizados complementares ao Tailwind */
+
+/* HTMX loading state */
+.htmx-request .htmx-indicator { display: inline-flex !important; }
+.htmx-request.htmx-indicator { display: inline-flex !important; }
+
+/* Transição suave para elementos HTMX */
+.htmx-swapping { opacity: 0; transition: opacity 0.1s ease-out; }
+.htmx-settling { opacity: 1; transition: opacity 0.2s ease-in; }

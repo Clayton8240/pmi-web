@@ -1,0 +1,34 @@
+<!-- Partial retornado após geração bem-sucedida de etiquetas -->
+<div class="bg-green-50 border border-green-200 rounded-xl p-6">
+  <div class="flex items-start gap-4">
+    <div class="w-10 h-10 bg-green-100 rounded-full flex items-center justify-center shrink-0">
+      <svg class="w-5 h-5 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+      </svg>
+    </div>
+    <div class="flex-1">
+      <h3 class="font-semibold text-green-800 mb-1">
+        {{ etiquetas|length }} etiqueta(s) gerada(s) com sucesso!
+      </h3>
+      <p class="text-sm text-green-600 mb-4">Clique abaixo para baixar cada etiqueta em PDF.</p>
+
+      <div class="flex flex-wrap gap-2">
+        {% for e in etiquetas %}
+          <a
+            href="/etiquetas/{{ e.id }}/pdf"
+            target="_blank"
+            class="inline-flex items-center gap-1.5 bg-white border border-green-300 text-green-700 hover:bg-green-100
+                   px-4 py-2 rounded-lg text-sm font-medium transition-colors"
+          >
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                    d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586
+                       a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+            </svg>
+            Caixa #{{ e.num_caixa }}
+          </a>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+</div>

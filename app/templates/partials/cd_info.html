@@ -1,0 +1,190 @@
+<!-- Partial retornado pelo HTMX ao buscar um CD. Inclui dados, volumes e formulário. -->
+
+<div class="space-y-4">
+
+  <!-- Dados do CD + Volume calculado -->
+  <div class="grid grid-cols-5 gap-4">
+
+    <!-- Dados do CD (3/5) -->
+    <div class="col-span-3 bg-white rounded-xl border border-gray-200 p-5">
+      <div class="flex items-center justify-between mb-4">
+        <h3 class="font-semibold text-gray-800">CD {{ cd.id }} — {{ cd.cidade }}/{{ cd.uf }}</h3>
+        <a href="/cds/{{ cd.id }}" class="text-xs text-blue-500 hover:underline">ver detalhe →</a>
+      </div>
+      <dl class="grid grid-cols-2 gap-x-6 gap-y-2 text-sm">
+        <div><dt class="text-gray-400 text-xs">Regional</dt><dd class="font-medium">{{ cd.regional or '—' }}</dd></div>
+        <div><dt class="text-gray-400 text-xs">Filial</dt><dd class="font-medium">{{ cd.filial or '—' }}</dd></div>
+        <div><dt class="text-gray-400 text-xs">Cidade</dt><dd class="font-medium">{{ cd.cidade or '—' }}</dd></div>
+        <div><dt class="text-gray-400 text-xs">UF</dt><dd class="font-medium">{{ cd.uf or '—' }}</dd></div>
+        <div class="col-span-2">
+          <dt class="text-gray-400 text-xs">Descrição do Pacote</dt>
+          <dd class="font-medium text-sm leading-tight">{{ cd.descricao_pacote or cd.zona_venda or '—' }}</dd>
+        </div>
+      </dl>
+    </div>
+
+    <!-- Volume calculado (2/5) -->
+    <div class="col-span-2 bg-white rounded-xl border border-gray-200 p-5 flex flex-col">
+      <h3 class="font-semibold text-gray-800 mb-3">Volume Calculado</h3>
+
+      {% if volume_info.volume_texto %}
+        <div class="flex-1 bg-blue-50 rounded-lg p-4 text-center">
+          <div class="text-2xl font-bold text-blue-700 leading-tight">
+            {{ volume_info.volume_texto }}
+          </div>
+          <div class="text-sm text-blue-500 mt-1">
+            {{ volume_info.num_caixas }} caixa(s) sugerida(s)
+          </div>
+        </div>
+      {% else %}
+        <div class="flex-1 bg-gray-50 rounded-lg p-4 text-center text-gray-400 text-sm flex flex-col items-center justify-center gap-1">
+          <svg class="w-8 h-8 opacity-30" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"
+                  d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/>
+          </svg>
+          Sem catálogo de volume
+        </div>
+      {% endif %}
+
+      {% if volume_info.itens_sem_catalogo %}
+        <p class="text-xs text-amber-600 mt-2">
+          ⚠️ {{ volume_info.itens_sem_catalogo|length }} item(ns) sem catálogo.
+          <a href="/materiais" class="underline">Cadastrar →</a>
+        </p>
+      {% endif %}
+    </div>
+  </div>
+
+  <!-- Itens do CD -->
+  <div class="bg-white rounded-xl border border-gray-200 overflow-hidden">
+    <div class="px-5 py-3 border-b border-gray-100 flex items-center justify-between">
+      <h3 class="font-semibold text-gray-800 text-sm">Itens do Pedido ({{ itens|length }})</h3>
+    </div>
+    <div class="overflow-x-auto">
+      <table class="w-full text-xs">
+        <thead class="bg-gray-50 text-gray-500 uppercase tracking-wide">
+          <tr>
+            <th class="px-4 py-2.5 text-left">Part Number</th>
+            <th class="px-4 py-2.5 text-left">Descrição</th>
+            <th class="px-4 py-2.5 text-right">Qtde</th>
+            <th class="px-4 py-2.5 text-center">Volume/Cx</th>
+            <th class="px-4 py-2.5 text-center">Caixas</th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-gray-50">
+          {% for d in volume_info.detalhes %}
+          <tr class="hover:bg-gray-50">
+            <td class="px-4 py-2 font-mono text-gray-700">{{ d.part_number }}</td>
+            <td class="px-4 py-2 text-gray-600 max-w-xs truncate">{{ d.descricao or '—' }}</td>
+            <td class="px-4 py-2 text-right font-medium">{{ d.qtde }}</td>
+            <td class="px-4 py-2 text-center">
+              {% if d.volume_desc %}
+                <span class="bg-blue-100 text-blue-700 px-2 py-0.5 rounded text-xs font-medium">{{ d.volume_desc }}</span>
+              {% else %}
+                <span class="text-gray-300">—</span>
+              {% endif %}
+            </td>
+            <td class="px-4 py-2 text-center font-semibold text-gray-700">
+              {{ d.num_caixas or '—' }}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Formulário de geração -->
+  <form
+    hx-post="/etiquetas/"
+    hx-target="#resultado"
+    hx-swap="innerHTML"
+    hx-indicator="#spinner-gerar"
+    class="bg-white rounded-xl border border-gray-200 p-6"
+  >
+    <input type="hidden" name="cd_id" value="{{ cd.id }}">
+
+    <h3 class="font-semibold text-gray-800 mb-4">Dados da Etiqueta</h3>
+
+    <div class="grid grid-cols-4 gap-4 mb-4">
+      <div>
+        <label class="block text-xs font-medium text-gray-600 mb-1">Volume</label>
+        <input
+          type="text"
+          name="volume"
+          value="{{ volume_info.volume_texto }}"
+          placeholder="Ex: 10UN/CX"
+          class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+        >
+      </div>
+      <div>
+        <label class="block text-xs font-medium text-gray-600 mb-1">Qtde de Caixas</label>
+        <input
+          type="number"
+          name="num_caixas"
+          value="{{ volume_info.num_caixas }}"
+          min="1"
+          max="999"
+          class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+        >
+      </div>
+      <div>
+        <label class="block text-xs font-medium text-gray-600 mb-1">Embalagem</label>
+        <input
+          type="text"
+          name="embalagem"
+          placeholder="Ex: CAIXA"
+          class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+        >
+      </div>
+      <div>
+        <label class="block text-xs font-medium text-gray-600 mb-1">Projeto</label>
+        <input
+          type="text"
+          name="projeto"
+          placeholder="Ex: PMI 2026"
+          class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+        >
+      </div>
+    </div>
+
+    <div class="mb-4">
+      <label class="block text-xs font-medium text-gray-600 mb-1">Transportador</label>
+      <input
+        type="text"
+        name="transportador"
+        value="{{ transportador_padrao }}"
+        class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+      >
+    </div>
+
+    <div class="flex items-center justify-between pt-2 border-t border-gray-100">
+      <p class="text-xs text-gray-400">
+        Próximo Nº de Caixa: <b class="text-gray-700">#{{ prox_caixa }}</b>
+        {% if volume_info.num_caixas > 1 %}
+          → #{{ prox_caixa + volume_info.num_caixas - 1 }}
+        {% endif %}
+      </p>
+      <button
+        type="submit"
+        class="bg-green-600 hover:bg-green-700 text-white px-8 py-2.5 rounded-lg text-sm font-semibold transition-colors flex items-center gap-2"
+      >
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"/>
+        </svg>
+        Gerar Etiqueta(s)
+        <span id="spinner-gerar" class="htmx-indicator">
+          <svg class="animate-spin w-4 h-4" fill="none" viewBox="0 0 24 24">
+            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
+            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
+          </svg>
+        </span>
+      </button>
+    </div>
+  </form>
+
+  <!-- Resultado da geração -->
+  <div id="resultado"></div>
+
+</div>

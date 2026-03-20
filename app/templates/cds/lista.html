@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% block title %}CDs / Regiões — PMI{% endblock %}
+{% block page_title %}CDs / Regiões{% endblock %}
+
+{% block content %}
+<div class="max-w-5xl space-y-4">
+
+  <!-- Busca -->
+  <div class="bg-white rounded-xl border border-gray-200 p-4">
+    <form class="flex gap-3" hx-get="/cds/" hx-target="#tabela-wrapper" hx-push-url="true">
+      <input type="text" name="q" value="{{ q }}" placeholder="Buscar por regional, cidade, filial..."
+             class="flex-1 border border-gray-300 rounded-lg px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+      <button type="submit"
+              class="bg-blue-600 hover:bg-blue-700 text-white px-5 py-2 rounded-lg text-sm font-medium transition-colors">
+        Buscar
+      </button>
+    </form>
+  </div>
+
+  <!-- Tabela -->
+  <div id="tabela-wrapper" class="bg-white rounded-xl border border-gray-200 overflow-hidden">
+    {% include "cds/_tabela.html" %}
+  </div>
+
+</div>
+{% endblock %}

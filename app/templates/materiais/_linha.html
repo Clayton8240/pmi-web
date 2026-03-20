@@ -1,0 +1,48 @@
+<!-- Linha de material na tabela — também retornada pelo HTMX ao adicionar -->
+<tr id="mat-{{ m.id }}">
+  <td class="px-5 py-3 font-mono text-gray-700 font-medium">{{ m.part_number }}</td>
+  <td class="px-5 py-3 text-gray-600">{{ m.descricao }}</td>
+  <td class="px-5 py-3 text-gray-500">{{ m.marca or '—' }}</td>
+  <td class="px-5 py-3">
+    <!-- Badges dos volumes existentes -->
+    <div id="volumes-{{ m.id }}" class="flex flex-wrap gap-1.5 items-center">
+      {% for v in m.volumes if v.ativo %}
+        {% set v_ref = v %}
+        {% include "materiais/_volume_badge.html" with context %}
+      {% endfor %}
+
+      <!-- Form inline para adicionar volume -->
+      <form
+        hx-post="/materiais/{{ m.id }}/volumes"
+        hx-target="#volumes-{{ m.id }}"
+        hx-swap="beforeend"
+        hx-on::after-request="this.reset()"
+        class="flex items-center gap-1 ml-1"
+      >
+        <input type="text" name="descricao" placeholder="10UN/CX" required
+               class="border border-gray-200 rounded px-2 py-1 text-xs w-24 focus:outline-none focus:ring-1 focus:ring-blue-400">
+        <input type="number" name="qtde_por_cx" placeholder="Qtde/cx" required min="1"
+               class="border border-gray-200 rounded px-2 py-1 text-xs w-20 focus:outline-none focus:ring-1 focus:ring-blue-400">
+        <button type="submit"
+                class="bg-blue-50 hover:bg-blue-100 text-blue-600 border border-blue-200 rounded px-2 py-1 text-xs font-medium transition-colors">
+          + vol
+        </button>
+      </form>
+    </div>
+  </td>
+  <td class="px-5 py-3 text-right">
+    <button
+      hx-delete="/materiais/{{ m.id }}"
+      hx-target="#mat-{{ m.id }}"
+      hx-swap="outerHTML"
+      hx-confirm="Remover o material {{ m.part_number }}?"
+      class="text-red-400 hover:text-red-600 transition-colors"
+      title="Remover"
+    >
+      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+              d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
+      </svg>
+    </button>
+  </td>
+</tr>

@@ -1,0 +1,106 @@
+{% extends "base.html" %}
+{% block title %}Histórico de Etiquetas — PMI{% endblock %}
+{% block page_title %}Histórico de Etiquetas{% endblock %}
+
+{% block content %}
+<div class="max-w-5xl space-y-4">
+
+  <!-- Filtro por campanha -->
+  <div class="flex gap-2 flex-wrap items-center">
+    <a href="/etiquetas/historico"
+       class="text-xs px-3 py-1.5 rounded-lg border transition-colors {% if not campanha_id_filtro %}bg-blue-600 text-white border-blue-600{% else %}bg-white text-gray-600 border-gray-200 hover:bg-gray-50{% endif %}">
+      Todas
+    </a>
+    {% for c in campanhas %}
+    <a href="/etiquetas/historico?campanha_id={{ c.id }}"
+       class="text-xs px-3 py-1.5 rounded-lg border transition-colors {% if campanha_id_filtro == c.id %}bg-blue-600 text-white border-blue-600{% else %}bg-white text-gray-600 border-gray-200 hover:bg-gray-50{% endif %}">
+      {{ c.nome }}
+      {% if c.status == 'ativa' %}<span class="ml-1 opacity-70">●</span>{% endif %}
+    </a>
+    {% endfor %}
+  </div>
+
+  <div class="bg-white rounded-xl border border-gray-200 overflow-hidden">
+    <div class="px-6 py-4 border-b border-gray-100 flex justify-between items-center">
+      <span class="text-sm text-gray-500">{{ total }} etiqueta(s) gerada(s)</span>
+    </div>
+    <div class="overflow-x-auto">
+      <table class="w-full text-sm">
+        <thead class="bg-gray-50 text-xs text-gray-500 uppercase tracking-wide">
+          <tr>
+            <th class="px-5 py-3 text-left">Nº Caixa</th>
+            <th class="px-5 py-3 text-left">CD</th>
+            <th class="px-5 py-3 text-left">Regional</th>
+            <th class="px-5 py-3 text-left">Cidade/UF</th>
+            <th class="px-5 py-3 text-left">Volume</th>
+            <th class="px-5 py-3 text-left">Gerada em</th>
+            <th class="px-5 py-3 text-center">PDF</th>
+            <th class="px-5 py-3 text-center">Reimprimir</th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-gray-50">
+          {% for e in etiquetas %}
+          <tr class="hover:bg-gray-50">
+            <td class="px-5 py-3 font-bold text-blue-700">#{{ e.num_caixa }}</td>
+            <td class="px-5 py-3 font-mono text-gray-600">{{ e.cd_id }}</td>
+            <td class="px-5 py-3">{{ e.cd.regional if e.cd else '—' }}</td>
+            <td class="px-5 py-3">{{ (e.cd.cidade + '/' + e.cd.uf) if e.cd else '—' }}</td>
+            <td class="px-5 py-3">
+              {% if e.volume %}
+                <span class="bg-blue-50 text-blue-700 px-2 py-0.5 rounded text-xs">{{ e.volume }}</span>
+              {% else %}—{% endif %}
+            </td>
+            <td class="px-5 py-3 text-gray-400 text-xs">
+              {{ e.gerada_em.strftime('%d/%m/%Y %H:%M') if e.gerada_em else '—' }}
+              {% if e.reimpressao %}<span class="text-red-500 ml-1">[REIMP]</span>{% endif %}
+            </td>
+            <td class="px-5 py-3 text-center">
+              {% if e.pdf_path %}
+                <a href="/etiquetas/{{ e.id }}/pdf" target="_blank"
+                   class="text-blue-500 hover:text-blue-700 inline-flex items-center gap-1 text-xs">
+                  <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                          d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/>
+                  </svg>
+                  PDF
+                </a>
+              {% else %}—{% endif %}
+            </td>
+            <td class="px-5 py-3 text-center">
+              {% if not e.reimpressao %}
+              <form method="POST" action="/etiquetas/{{ e.id }}/reimprimir"
+                    onsubmit="this.querySelector('button').disabled=true; this.querySelector('button').textContent='...'">
+                <button type="submit"
+                        class="text-xs text-amber-600 hover:text-amber-800 border border-amber-300 hover:border-amber-500 rounded px-2 py-0.5 transition-colors">
+                  Reimprimir
+                </button>
+              </form>
+              {% else %}
+              <span class="text-xs text-gray-300">—</span>
+              {% endif %}
+            </td>
+          </tr>
+          {% else %}
+          <tr>
+            <td colspan="8" class="px-5 py-10 text-center text-gray-400">
+              Nenhuma etiqueta gerada ainda.
+              <a href="/etiquetas/lote" class="text-blue-500 hover:underline ml-1">Gerar lote →</a>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% if total > per_page %}
+    <div class="px-5 py-3 border-t border-gray-100 flex justify-end gap-2 text-sm">
+      {% if page > 1 %}
+        <a href="?page={{ page - 1 }}" class="px-3 py-1 border rounded hover:bg-gray-50">← Anterior</a>
+      {% endif %}
+      {% if page * per_page < total %}
+        <a href="?page={{ page + 1 }}" class="px-3 py-1 border rounded hover:bg-gray-50">Próxima →</a>
+      {% endif %}
+    </div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

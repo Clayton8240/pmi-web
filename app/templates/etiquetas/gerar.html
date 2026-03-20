@@ -1,0 +1,78 @@
+{% extends "base.html" %}
+{% block title %}Gerar Etiqueta — PMI{% endblock %}
+{% block page_title %}Gerar Etiqueta{% endblock %}
+
+{% block content %}
+<div class="max-w-5xl space-y-6">
+
+  <!-- Stats rápidas -->
+  <div class="grid grid-cols-2 gap-4">
+    <div class="bg-white rounded-xl border border-gray-200 p-4 flex items-center gap-4">
+      <div class="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center text-blue-600 font-bold text-lg">
+        {{ total_cds }}
+      </div>
+      <div>
+        <div class="text-sm font-medium text-gray-700">CDs cadastrados</div>
+        <div class="text-xs text-gray-400">regiões disponíveis</div>
+      </div>
+    </div>
+    <div class="bg-white rounded-xl border border-gray-200 p-4 flex items-center gap-4">
+      <div class="w-10 h-10 bg-green-100 rounded-lg flex items-center justify-center text-green-600 font-bold text-lg">
+        {{ total_etiquetas }}
+      </div>
+      <div>
+        <div class="text-sm font-medium text-gray-700">Etiquetas geradas</div>
+        <div class="text-xs text-gray-400">nesta campanha</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Busca de CD -->
+  <div class="bg-white rounded-xl border border-gray-200 p-6">
+    <h2 class="text-base font-semibold text-gray-800 mb-4">Buscar CD por Controle MMBR</h2>
+    <div class="flex gap-3 items-center">
+      <input
+        type="number"
+        id="ctrl-input"
+        name="ctrl_id"
+        placeholder="Ex: 1, 6, 327..."
+        min="1"
+        class="flex-1 border border-gray-300 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+        onkeydown="if(event.key==='Enter'){document.getElementById('btn-buscar').click()}"
+      >
+      <button
+        id="btn-buscar"
+        hx-get="/api/cds/buscar"
+        hx-include="#ctrl-input"
+        hx-target="#cd-info"
+        hx-swap="innerHTML"
+        hx-indicator="#spinner"
+        class="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2.5 rounded-lg text-sm font-medium transition-colors flex items-center gap-2"
+      >
+        <span>Buscar</span>
+        <span id="spinner" class="htmx-indicator">
+          <svg class="animate-spin w-4 h-4" fill="none" viewBox="0 0 24 24">
+            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
+            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
+          </svg>
+        </span>
+      </button>
+    </div>
+    <p class="text-xs text-gray-400 mt-2">
+      💡 Pressione Enter ou clique em Buscar. O volume será calculado automaticamente com base no catálogo de materiais.
+    </p>
+  </div>
+
+  <!-- Resultado HTMX -->
+  <div id="cd-info">
+    <div class="border-2 border-dashed border-gray-200 rounded-xl p-12 text-center text-gray-400">
+      <svg class="w-12 h-12 mx-auto mb-3 opacity-30" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"
+              d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
+      </svg>
+      <p class="text-sm">Digite o Controle MMBR do CD e clique em <b>Buscar</b></p>
+    </div>
+  </div>
+
+</div>
+{% endblock %}

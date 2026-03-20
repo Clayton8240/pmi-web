@@ -1,0 +1,138 @@
+{% extends "base.html" %}
+{% block title %}Importar Planilha — PMI{% endblock %}
+{% block page_title %}Importar Planilha{% endblock %}
+
+{% block content %}
+<div class="max-w-3xl space-y-6">
+
+  <!-- Stats atuais -->
+  <div class="grid grid-cols-3 gap-4">
+    {% for label, val in [('CDs cadastrados', stats.total_cds), ('Itens importados', stats.total_itens), ('Materiais no catálogo', stats.total_materiais)] %}
+    <div class="bg-white rounded-xl border border-gray-200 p-4 text-center">
+      <div class="text-3xl font-bold text-gray-800">{{ val }}</div>
+      <div class="text-xs text-gray-400 mt-1">{{ label }}</div>
+    </div>
+    {% endfor %}
+  </div>
+
+  <!-- Upload -->
+  <div class="bg-white rounded-xl border border-gray-200 p-6 space-y-4">
+    <div>
+      <h2 class="font-semibold text-gray-800 mb-1">Importar Planilha de CDs</h2>
+      <p class="text-sm text-gray-500">
+        Selecione o arquivo <b>PMI- ETIQUETAS - MATRIZ.xlsm</b> (ou compatível).
+        O nome da campanha será detectado automaticamente da coluna <b>Descrição Pacote</b>
+        — cada importação cria uma nova campanha e encerra a anterior.
+      </p>
+    </div>
+
+    <form
+      hx-post="/importacao/cds"
+      hx-target="#resultado-cds"
+      hx-swap="innerHTML"
+      hx-encoding="multipart/form-data"
+      hx-indicator="#spinner-cds"
+      class="space-y-3"
+    >
+      <!-- Nome opcional: se vazio, será lido da coluna G da planilha -->
+      <div>
+        <label class="block text-xs font-medium text-gray-600 mb-1">
+          Nome da campanha <span class="font-normal text-gray-400">(opcional — auto-detectado da planilha)</span>
+        </label>
+        <input
+          type="text"
+          name="nome_campanha"
+          placeholder="Ex: PMI Q2 2026"
+          class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+        >
+      </div>
+
+      <div>
+        <label class="block text-xs font-medium text-gray-600 mb-1">Arquivo</label>
+        <div class="flex gap-3 items-center">
+          <input
+            type="file"
+            name="arquivo"
+            accept=".xlsx,.xlsm,.xls"
+            required
+            class="flex-1 border border-gray-300 rounded-lg px-3 py-2 text-sm
+                   file:border-0 file:bg-blue-50 file:text-blue-700 file:px-3 file:py-1 file:rounded
+                   file:text-xs file:font-medium file:cursor-pointer cursor-pointer"
+          >
+          <button
+            type="submit"
+            class="bg-blue-600 hover:bg-blue-700 text-white px-5 py-2 rounded-lg text-sm font-medium
+                   transition-colors flex items-center gap-2 shrink-0"
+          >
+            Importar
+            <span id="spinner-cds" class="htmx-indicator">
+              <svg class="animate-spin w-4 h-4" fill="none" viewBox="0 0 24 24">
+                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
+                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
+              </svg>
+            </span>
+          </button>
+        </div>
+      </div>
+    </form>
+
+    <div id="resultado-cds"></div>
+  </div>
+
+  <!-- Campanhas anteriores -->
+  {% if campanhas %}
+  <div class="bg-white rounded-xl border border-gray-200 overflow-hidden">
+    <div class="px-5 py-3 border-b border-gray-100">
+      <h3 class="text-sm font-semibold text-gray-700">Campanhas anteriores</h3>
+    </div>
+    <table class="w-full text-sm">
+      <thead class="bg-gray-50 text-xs text-gray-500 uppercase">
+        <tr>
+          <th class="px-4 py-2 text-left">Nome</th>
+          <th class="px-4 py-2 text-left">Status</th>
+          <th class="px-4 py-2 text-left">Criada em</th>
+          <th class="px-4 py-2 text-center">Ações</th>
+        </tr>
+      </thead>
+      <tbody class="divide-y divide-gray-100">
+        {% for c in campanhas %}
+        <tr class="hover:bg-gray-50">
+          <td class="px-4 py-2 font-medium text-gray-700">{{ c.nome }}</td>
+          <td class="px-4 py-2">
+            {% if c.status == 'ativa' %}
+              <span class="bg-green-100 text-green-700 text-xs px-2 py-0.5 rounded font-medium">ativa</span>
+            {% else %}
+              <span class="bg-gray-100 text-gray-500 text-xs px-2 py-0.5 rounded">encerrada</span>
+            {% endif %}
+          </td>
+          <td class="px-4 py-2 text-xs text-gray-400">
+            {{ c.criada_em.strftime('%d/%m/%Y %H:%M') if c.criada_em else '—' }}
+          </td>
+          <td class="px-4 py-2 text-center">
+            <a href="/etiquetas/lote?campanha_id={{ c.id }}"
+               class="text-xs text-blue-600 hover:underline">Ver lote →</a>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endif %}
+
+  <!-- Dicas -->
+  <div class="bg-blue-50 rounded-xl border border-blue-100 p-5">
+    <h3 class="font-semibold text-blue-800 mb-2 text-sm">Formato esperado da planilha</h3>
+    <ul class="text-xs text-blue-700 space-y-1">
+      <li>• Coluna A: Controle Mentor (ID numérico do CD)</li>
+      <li>• Colunas B–G: Cidade, UF, Regional, Filial, Zona Venda, <b>Descrição Pacote</b></li>
+      <li>• Coluna H: Part Number</li>
+      <li>• Colunas I–K: Marca, Material/Descrição, Quantidade</li>
+    </ul>
+    <p class="text-xs text-blue-600 mt-2">
+      💡 O valor da coluna <b>Descrição Pacote</b> (G) será usado como nome da campanha se nenhum nome for informado.
+    </p>
+  </div>
+
+</div>
+{% endblock %}
+

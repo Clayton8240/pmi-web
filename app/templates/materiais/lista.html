@@ -1,0 +1,76 @@
+{% extends "base.html" %}
+{% block title %}Catálogo de Materiais — PMI{% endblock %}
+{% block page_title %}Catálogo de Materiais{% endblock %}
+
+{% block content %}
+<div class="max-w-5xl space-y-6">
+
+  <!-- Adicionar material -->
+  <div class="bg-white rounded-xl border border-gray-200 p-6">
+    <h2 class="font-semibold text-gray-800 mb-4">Adicionar Material</h2>
+    <form
+      hx-post="/materiais/"
+      hx-target="#lista-materiais"
+      hx-swap="afterbegin"
+      hx-on::after-request="this.reset()"
+      class="grid grid-cols-5 gap-3 items-end"
+    >
+      <div class="col-span-1">
+        <label class="block text-xs font-medium text-gray-600 mb-1">Part Number *</label>
+        <input type="text" name="part_number" required placeholder="HH-0059"
+               class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 uppercase">
+      </div>
+      <div class="col-span-2">
+        <label class="block text-xs font-medium text-gray-600 mb-1">Descrição *</label>
+        <input type="text" name="descricao" required placeholder="HL C-Store 21x22"
+               class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+      </div>
+      <div class="col-span-1">
+        <label class="block text-xs font-medium text-gray-600 mb-1">Marca</label>
+        <input type="text" name="marca" placeholder="Marlboro"
+               class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+      </div>
+      <div class="col-span-1">
+        <button type="submit"
+                class="w-full bg-blue-600 hover:bg-blue-700 text-white py-2 rounded-lg text-sm font-medium transition-colors">
+          + Adicionar
+        </button>
+      </div>
+    </form>
+  </div>
+
+  <!-- Tabela de materiais -->
+  <div class="bg-white rounded-xl border border-gray-200 overflow-hidden">
+    <div class="px-6 py-4 border-b border-gray-100">
+      <h2 class="font-semibold text-gray-800">
+        Materiais cadastrados
+        <span class="text-sm font-normal text-gray-400 ml-2">({{ materiais|length }})</span>
+      </h2>
+    </div>
+    <div class="overflow-x-auto">
+      <table class="w-full text-sm" id="tabela-materiais">
+        <thead class="bg-gray-50 text-xs text-gray-500 uppercase tracking-wide">
+          <tr>
+            <th class="px-5 py-3 text-left">Part Number</th>
+            <th class="px-5 py-3 text-left">Descrição</th>
+            <th class="px-5 py-3 text-left">Marca</th>
+            <th class="px-5 py-3 text-left">Volumes por Caixa</th>
+            <th class="px-5 py-3"></th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-gray-50" id="lista-materiais">
+          {% for m in materiais %}
+            {% include "materiais/_linha.html" %}
+          {% else %}
+          <tr id="empty-row">
+            <td colspan="5" class="px-5 py-10 text-center text-gray-400">
+              Nenhum material cadastrado. Adicione o primeiro acima.
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% endblock %}

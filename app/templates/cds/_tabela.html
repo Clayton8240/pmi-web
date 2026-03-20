@@ -1,0 +1,48 @@
+<!-- Partial: tabela de CDs, retornável via HTMX e incluída na página -->
+<div class="px-5 py-3 border-b border-gray-100 text-sm text-gray-500">
+  {{ cds|length }} CD(s) encontrado(s){% if q %} para "<b>{{ q }}</b>"{% endif %}
+</div>
+<div class="overflow-x-auto">
+  <table class="w-full text-sm">
+    <thead class="bg-gray-50 text-xs text-gray-500 uppercase tracking-wide">
+      <tr>
+        <th class="px-5 py-3 text-left">MMBR</th>
+        <th class="px-5 py-3 text-left">Regional</th>
+        <th class="px-5 py-3 text-left">Filial</th>
+        <th class="px-5 py-3 text-left">Cidade/UF</th>
+        <th class="px-5 py-3 text-left">Descrição do Pacote</th>
+        <th class="px-5 py-3 text-center">Ações</th>
+      </tr>
+    </thead>
+    <tbody class="divide-y divide-gray-50">
+      {% for cd in cds %}
+      <tr class="hover:bg-gray-50">
+        <td class="px-5 py-3 font-bold text-blue-700">{{ cd.id }}</td>
+        <td class="px-5 py-3 font-medium">{{ cd.regional or '—' }}</td>
+        <td class="px-5 py-3 text-gray-600">{{ cd.filial or '—' }}</td>
+        <td class="px-5 py-3 text-gray-600">{{ cd.cidade or '—' }}/{{ cd.uf or '—' }}</td>
+        <td class="px-5 py-3 text-gray-500 text-xs max-w-xs truncate" title="{{ cd.descricao_pacote }}">
+          {{ cd.descricao_pacote or cd.zona_venda or '—' }}
+        </td>
+        <td class="px-5 py-3 text-center flex justify-center gap-2">
+          <a href="/cds/{{ cd.id }}"
+             class="text-blue-500 hover:text-blue-700 text-xs border border-blue-200 px-2 py-1 rounded hover:bg-blue-50">
+            Detalhe
+          </a>
+          <a href="/etiquetas/gerar?ctrl_id={{ cd.id }}"
+             class="text-green-600 hover:text-green-800 text-xs border border-green-200 px-2 py-1 rounded hover:bg-green-50">
+            Gerar
+          </a>
+        </td>
+      </tr>
+      {% else %}
+      <tr>
+        <td colspan="6" class="px-5 py-10 text-center text-gray-400">
+          Nenhum CD encontrado.
+          <a href="/importacao" class="text-blue-500 hover:underline ml-1">Importar planilha →</a>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>

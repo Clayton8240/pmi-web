@@ -1,0 +1,13 @@
+<!-- Badge de configuração de volume — também retornado pelo HTMX ao adicionar -->
+{% set v = v_ref if v_ref is defined else v %}
+<span id="vol-{{ v.id }}"
+      class="inline-flex items-center gap-1 bg-blue-100 text-blue-700 px-2 py-0.5 rounded text-xs font-medium">
+  {{ v.descricao }} ({{ v.qtde_por_cx }}/cx)
+  <button
+    hx-delete="/materiais/{{ material_id }}/volumes/{{ v.id }}"
+    hx-target="#vol-{{ v.id }}"
+    hx-swap="outerHTML"
+    class="ml-0.5 text-blue-400 hover:text-blue-700"
+    title="Remover"
+  >×</button>
+</span>
