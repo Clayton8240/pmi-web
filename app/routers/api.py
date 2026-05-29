@@ -37,9 +37,9 @@ def buscar_cd(
     prox_caixa = proximo_num_caixa(db, campanha_id)
 
     return templates.TemplateResponse(
+        request,
         "partials/cd_info.html",
         {
-            "request": request,
             "cd": cd,
             "itens": itens,
             "volume_info": volume_info,

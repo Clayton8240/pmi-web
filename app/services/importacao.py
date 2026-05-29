@@ -76,10 +76,12 @@ def importar_cds_excel(excel_path: str, db: Session, nome_campanha: str | None =
 
     for row in sheet.iter_rows(min_row=header_row + 1, values_only=True):
         controle = row[0]
-        if controle is not None:
+        controle_str = "" if controle is None else str(controle).strip()
+        if controle_str:
             try:
-                current_cd_id = int(controle)
+                current_cd_id = int(float(controle_str))
             except (ValueError, TypeError):
+                # Linha com texto na coluna A (ex.: cabeçalho repetido) — ignora
                 continue
 
             current_cd_data = {
@@ -119,17 +121,32 @@ def importar_cds_excel(excel_path: str, db: Session, nome_campanha: str | None =
         except (ValueError, TypeError):
             qtde = 0
 
-        # Tenta vincular ao catálogo de materiais
+        # Vincula ao catálogo; cria o material automaticamente se não existir
         material = (
             db.query(Material)
             .filter(Material.part_number.ilike(part_number))
             .first()
         )
+        if not material:
+            material = Material(
+                part_number=part_number.strip().upper(),
+                descricao=descricao or part_number,
+                marca=marca,
+                unidade="UN",
+            )
+            db.add(material)
+            db.flush()
+        else:
+            # Mantém descrição/marca do catálogo atualizadas quando vierem preenchidas
+            if descricao and not material.descricao:
+                material.descricao = descricao
+            if marca and not material.marca:
+                material.marca = marca
 
         db.add(ItemCD(
             cd_id=current_cd_id,
             campanha_id=campanha_id,
-            material_id=material.id if material else None,
+            material_id=material.id,
             part_number=part_number,
             marca=marca,
             descricao=descricao,

@@ -21,9 +21,9 @@ def pagina_importacao(request: Request, db: Session = Depends(get_db)):
     }
     campanhas = db.query(Campanha).order_by(Campanha.criada_em.desc()).all()
     return templates.TemplateResponse(
+        request,
         "importacao/index.html",
         {
-            "request": request,
             "stats": stats,
             "active_page": "importacao",
             "campanhas": campanhas,

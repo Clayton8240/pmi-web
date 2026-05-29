@@ -12,8 +12,9 @@ router = APIRouter(prefix="/materiais", tags=["materiais"])
 def lista_materiais(request: Request, db: Session = Depends(get_db)):
     materiais = db.query(Material).filter(Material.ativo == True).order_by(Material.descricao).all()  # noqa
     return templates.TemplateResponse(
+        request,
         "materiais/lista.html",
-        {"request": request, "materiais": materiais, "active_page": "materiais"},
+        {"materiais": materiais, "active_page": "materiais"},
     )
 
 
@@ -46,7 +47,8 @@ def criar_material(
 
     if request.headers.get("HX-Request"):
         return templates.TemplateResponse(
-            "materiais/_linha.html", {"request": request, "m": mat}
+            request,
+            "materiais/_linha.html", {"m": mat}
         )
     from fastapi.responses import RedirectResponse
     return RedirectResponse("/materiais", status_code=303)
@@ -88,7 +90,8 @@ def adicionar_volume(
 
     if request.headers.get("HX-Request"):
         return templates.TemplateResponse(
-            "materiais/_volume_badge.html", {"request": request, "v": vol, "material_id": material_id}
+            request,
+            "materiais/_volume_badge.html", {"v": vol, "material_id": material_id}
         )
     from fastapi.responses import RedirectResponse
     return RedirectResponse("/materiais", status_code=303)

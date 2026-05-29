@@ -59,6 +59,57 @@
     </div>
   </div>
 
+  {% if pendentes_cap %}
+  <!-- Capacidades por material (pré-requisito para gerar etiquetas) -->
+  <form method="post" action="/etiquetas/lote/capacidades"
+        class="bg-amber-50 border border-amber-300 rounded-xl p-6 space-y-4">
+    <input type="hidden" name="campanha_id" value="{{ campanha.id if campanha else '' }}">
+    <div>
+      <h2 class="text-base font-semibold text-amber-900">
+        ⚠️ Informe a quantidade máxima por pacote
+      </h2>
+      <p class="text-xs text-amber-800 mt-1">
+        {{ pendentes_cap|length }} material(is) sem capacidade configurada.
+        Cada pacote será limitado pelo <b>menor</b> valor entre os materiais que compartilham a caixa.
+        Quando um item se esgota, os pacotes seguintes usam a capacidade dos restantes.
+      </p>
+    </div>
+
+    <div class="overflow-x-auto bg-white rounded-lg border border-amber-200">
+      <table class="w-full text-sm">
+        <thead class="bg-amber-100 text-xs text-amber-900 uppercase tracking-wide">
+          <tr>
+            <th class="px-3 py-2 text-left">Part Number</th>
+            <th class="px-3 py-2 text-left">Marca</th>
+            <th class="px-3 py-2 text-left">Descrição</th>
+            <th class="px-3 py-2 text-center w-40">Máx por pacote</th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-amber-50">
+          {% for p in pendentes_cap %}
+          <tr>
+            <td class="px-3 py-2 font-mono font-semibold text-blue-700">{{ p.part_number }}</td>
+            <td class="px-3 py-2 text-gray-600">{{ p.marca or '—' }}</td>
+            <td class="px-3 py-2 text-gray-700">{{ p.descricao or '—' }}</td>
+            <td class="px-3 py-2">
+              <input type="number" name="cap_{{ p.material_id }}" min="1" required
+                     class="w-full border border-amber-300 rounded px-2 py-1 text-sm text-center focus:outline-none focus:ring-2 focus:ring-amber-500"
+                     placeholder="ex.: 10">
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    <div class="flex justify-end">
+      <button type="submit"
+              class="bg-amber-600 hover:bg-amber-700 text-white px-6 py-2 rounded-lg text-sm font-semibold">
+        Salvar capacidades e continuar →
+      </button>
+    </div>
+  </form>
+  {% else %}
   <!-- Formulário da campanha -->
   <form
     id="form-lote"
@@ -127,6 +178,7 @@
       </button>
     </div>
   </form>
+  {% endif %}
 
   <!-- Barra de progresso (visível apenas durante geração) -->
   <div id="progresso-lote" class="hidden bg-white rounded-xl border border-gray-200 p-6">

@@ -27,10 +27,12 @@ def lista_cds(
     # Se for requisição HTMX, retorna apenas a tabela
     if request.headers.get("HX-Request"):
         return templates.TemplateResponse(
-            "cds/_tabela.html", {"request": request, "cds": cds, "q": q}
+            request,
+            "cds/_tabela.html", {"cds": cds, "q": q}
         )
     return templates.TemplateResponse(
-        "cds/lista.html", {"request": request, "cds": cds, "q": q, "active_page": "cds"}
+        request,
+        "cds/lista.html", {"cds": cds, "q": q, "active_page": "cds"}
     )
 
 
@@ -39,12 +41,14 @@ def detalhe_cd(request: Request, cd_id: int, db: Session = Depends(get_db)):
     cd = db.get(CD, cd_id)
     if not cd:
         return templates.TemplateResponse(
+            request,
             "cds/lista.html",
-            {"request": request, "cds": [], "q": "", "active_page": "cds", "erro": "CD não encontrado"},
+            {"cds": [], "q": "", "active_page": "cds", "erro": "CD não encontrado"},
         )
     itens = db.query(ItemCD).filter(ItemCD.cd_id == cd_id).all()
     volume_info = calcular_volume_cd(cd_id, db)
     return templates.TemplateResponse(
+        request,
         "cds/detalhe.html",
-        {"request": request, "cd": cd, "itens": itens, "volume_info": volume_info, "active_page": "cds"},
+        {"cd": cd, "itens": itens, "volume_info": volume_info, "active_page": "cds"},
     )

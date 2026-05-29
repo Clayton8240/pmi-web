@@ -4,9 +4,14 @@ from sqlalchemy.orm import Session
 from datetime import datetime, timedelta
 import os
 from app.database import get_db
-from app.models import CD, ItemCD, Etiqueta, ItemEtiqueta, Campanha
+from app.models import CD, ItemCD, Etiqueta, ItemEtiqueta, Campanha, Material, VolumePorCaixa
 from app.routers import templates
-from app.services.volume_calc import calcular_volume_cd, proximo_num_caixa
+from app.services.volume_calc import (
+    calcular_volume_cd,
+    proximo_num_caixa,
+    materiais_pendentes_capacidade,
+    montar_pacotes_cd,
+)
 from app.services.pdf_service import PDFService
 from app.config import OUTPUT_FOLDER, TRANSPORTADORA_PADRAO
 
@@ -46,9 +51,12 @@ def pagina_lote(
     campanha = db.get(Campanha, campanha_id) if campanha_id else _campanha_ativa(db)
     campanhas = db.query(Campanha).order_by(Campanha.criada_em.desc()).all()
 
+    pendentes_cap: list = []
     cds_info = []
     total_caixas = 0
     if campanha:
+        pendentes_cap = materiais_pendentes_capacidade(db, campanha.id)
+
         cds_ids = db.query(ItemCD.cd_id).filter(
             ItemCD.campanha_id == campanha.id
         ).distinct().all()
@@ -57,21 +65,28 @@ def pagina_lote(
             cd = db.get(CD, cd_id)
             if not cd or not cd.ativo:
                 continue
-            volume_info = calcular_volume_cd(cd_id, db, campanha.id)
-            n = max(1, volume_info["num_caixas"])
-            total_caixas += n
+            num_itens = db.query(ItemCD).filter(
+                ItemCD.cd_id == cd_id,
+                ItemCD.campanha_id == campanha.id,
+            ).count()
+            if pendentes_cap:
+                # Sem capacidades ainda — não dá para calcular pacotes
+                num_pacotes = 0
+            else:
+                num_pacotes = len(montar_pacotes_cd(cd_id, db, campanha.id))
+            total_caixas += num_pacotes
             cds_info.append({
                 "cd": cd,
-                "num_itens": len(volume_info["detalhes"]),
-                "num_caixas": n,
-                "volume_texto": volume_info["volume_texto"],
+                "num_itens": num_itens,
+                "num_caixas": num_pacotes,
+                "volume_texto": "",
             })
 
     prox_caixa = proximo_num_caixa(db, campanha.id if campanha else None)
     return templates.TemplateResponse(
+        request,
         "etiquetas/lote.html",
         {
-            "request": request,
             "active_page": "lote",
             "campanha": campanha,
             "campanhas": campanhas,
@@ -79,8 +94,47 @@ def pagina_lote(
             "total_caixas": total_caixas,
             "prox_caixa": prox_caixa,
             "transportador_padrao": TRANSPORTADORA_PADRAO,
+            "pendentes_cap": pendentes_cap,
         },
     )
+
+
+@router.post("/lote/capacidades")
+async def salvar_capacidades(
+    request: Request,
+    db: Session = Depends(get_db),
+):
+    """Recebe a quantidade máxima por pacote informada pelo usuário para
+    cada material pendente da campanha. Campos no form: `cap_<material_id>`,
+    mais `campanha_id` para o redirect."""
+    data = await request.form()
+    campanha_id = int(data.get("campanha_id") or 0)
+    for key, value in data.items():
+        if not key.startswith("cap_"):
+            continue
+        try:
+            mat_id = int(key.split("_", 1)[1])
+            qtde = int(value)
+        except (ValueError, TypeError):
+            continue
+        if qtde <= 0:
+            continue
+        mat = db.get(Material, mat_id)
+        if not mat:
+            continue
+        db.query(VolumePorCaixa).filter(
+            VolumePorCaixa.material_id == mat_id,
+            VolumePorCaixa.ativo == True,  # noqa: E712
+        ).update({"ativo": False})
+        db.add(VolumePorCaixa(
+            material_id=mat_id,
+            descricao=f"{qtde}UN/CX",
+            qtde_por_cx=qtde,
+            ativo=True,
+        ))
+    db.commit()
+    suffix = f"?campanha_id={campanha_id}" if campanha_id else ""
+    return RedirectResponse(url=f"/etiquetas/lote{suffix}", status_code=303)
 
 
 @router.post("/lote")
@@ -95,6 +149,15 @@ def gerar_lote(
     campanha = db.get(Campanha, campanha_id)
     if not campanha:
         return HTMLResponse('<p class="text-red-600">Campanha não encontrada.</p>')
+
+    pendentes = materiais_pendentes_capacidade(db, campanha_id)
+    if pendentes:
+        nomes = ", ".join(p["part_number"] for p in pendentes[:5])
+        extra = f" (+{len(pendentes) - 5})" if len(pendentes) > 5 else ""
+        return HTMLResponse(
+            f'<p class="text-red-600">Defina a quantidade máxima por pacote para os materiais: '
+            f'{nomes}{extra}. Recarregue a página.</p>'
+        )
 
     transp = transportador.strip() or TRANSPORTADORA_PADRAO
     hoje = datetime.now().strftime("%d/%m/%Y")
@@ -112,22 +175,15 @@ def gerar_lote(
         cd = db.get(CD, cd_id)
         if not cd:
             continue
-        itens = db.query(ItemCD).filter(
-            ItemCD.cd_id == cd_id,
-            ItemCD.campanha_id == campanha_id,
-        ).all()
-        itens_dict = [
-            {"part_number": it.part_number, "marca": it.marca, "descricao": it.descricao, "qtde": it.qtde}
-            for it in itens
-        ]
-        volume_info = calcular_volume_cd(cd_id, db, campanha_id)
-        num_caixas = max(1, volume_info["num_caixas"])
-        vol_texto = volume_info["volume_texto"] or ""
+        pacotes = montar_pacotes_cd(cd_id, db, campanha_id)
+        num_caixas = len(pacotes)
+        if num_caixas == 0:
+            continue
 
-        for idx in range(num_caixas):
+        for idx, pkg_itens in enumerate(pacotes):
             prox = contador_caixa
             contador_caixa += 1
-            volume_str = f"{idx + 1}/{num_caixas}" if num_caixas > 1 else (vol_texto or "1/1")
+            volume_str = f"{idx + 1}/{num_caixas}"
 
             dados_pdf = {
                 "num_caixa": prox,
@@ -158,16 +214,16 @@ def gerar_lote(
             db.add(etiqueta)
             db.flush()
 
-            for it in itens:
+            for it in pkg_itens:
                 db.add(ItemEtiqueta(
                     etiqueta_id=etiqueta.id,
-                    part_number=it.part_number,
-                    marca=it.marca,
-                    descricao=it.descricao,
-                    qtde=it.qtde,
+                    part_number=it["part_number"],
+                    marca=it["marca"],
+                    descricao=it["descricao"],
+                    qtde=it["qtde"],
                 ))
 
-            lote_para_pdf.append({"dados": dados_pdf, "itens": itens_dict})
+            lote_para_pdf.append({"dados": dados_pdf, "itens": pkg_itens})
             etiquetas_geradas.append({
                 "id": etiqueta.id,
                 "num_caixa": prox,
@@ -188,9 +244,9 @@ def gerar_lote(
         pdf_lote_filename = os.path.basename(pdf_lote_path)
 
     return templates.TemplateResponse(
+        request,
         "etiquetas/_sucesso_lote.html",
         {
-            "request": request,
             "etiquetas": etiquetas_geradas,
             "pdf_lote_filename": pdf_lote_filename,
             "total": len(etiquetas_geradas),
@@ -301,9 +357,9 @@ def pagina_gerar(request: Request, db: Session = Depends(get_db)):
     total_cds = db.query(CD).filter(CD.ativo == True).count()  # noqa
     total_etiquetas = db.query(Etiqueta).count()
     return templates.TemplateResponse(
+        request,
         "etiquetas/gerar.html",
         {
-            "request": request,
             "active_page": "gerar",
             "total_cds": total_cds,
             "total_etiquetas": total_etiquetas,
@@ -327,9 +383,9 @@ def historico(
     campanhas = db.query(Campanha).order_by(Campanha.criada_em.desc()).all()
     campanha_atual = db.get(Campanha, campanha_id) if campanha_id else None
     return templates.TemplateResponse(
+        request,
         "etiquetas/historico.html",
         {
-            "request": request,
             "etiquetas": etiquetas,
             "total": total,
             "page": page,
@@ -408,8 +464,9 @@ def gerar_etiqueta(
 
     db.commit()
     return templates.TemplateResponse(
+        request,
         "etiquetas/_sucesso.html",
-        {"request": request, "etiquetas": etiquetas_geradas},
+        {"etiquetas": etiquetas_geradas},
     )
 
 
@@ -448,9 +505,9 @@ def pagina_lote(request: Request, db: Session = Depends(get_db)):
         })
     prox_caixa = proximo_num_caixa(db)
     return templates.TemplateResponse(
+        request,
         "etiquetas/lote.html",
         {
-            "request": request,
             "active_page": "lote",
             "cds_info": cds_info,
             "total_caixas": total_caixas,
@@ -555,9 +612,9 @@ def gerar_lote(
         pdf_lote_filename = os.path.basename(pdf_lote_path)
 
     return templates.TemplateResponse(
+        request,
         "etiquetas/_sucesso_lote.html",
         {
-            "request": request,
             "etiquetas": etiquetas_geradas,
             "pdf_lote_filename": pdf_lote_filename,
             "total": len(etiquetas_geradas),
@@ -654,9 +711,9 @@ def pagina_gerar(request: Request, db: Session = Depends(get_db)):
     total_cds = db.query(CD).filter(CD.ativo == True).count()  # noqa
     total_etiquetas = db.query(Etiqueta).count()
     return templates.TemplateResponse(
+        request,
         "etiquetas/gerar.html",
         {
-            "request": request,
             "active_page": "gerar",
             "total_cds": total_cds,
             "total_etiquetas": total_etiquetas,
@@ -680,9 +737,9 @@ def historico(
         .all()
     )
     return templates.TemplateResponse(
+        request,
         "etiquetas/historico.html",
         {
-            "request": request,
             "etiquetas": etiquetas,
             "total": total,
             "page": page,
@@ -769,8 +826,9 @@ def gerar_etiqueta(
     db.commit()
 
     return templates.TemplateResponse(
+        request,
         "etiquetas/_sucesso.html",
-        {"request": request, "etiquetas": etiquetas_geradas},
+        {"etiquetas": etiquetas_geradas},
     )
 
 
@@ -792,9 +850,9 @@ def pagina_gerar(request: Request, db: Session = Depends(get_db)):
     total_cds = db.query(CD).filter(CD.ativo == True).count()  # noqa
     total_etiquetas = db.query(Etiqueta).count()
     return templates.TemplateResponse(
+        request,
         "etiquetas/gerar.html",
         {
-            "request": request,
             "active_page": "gerar",
             "total_cds": total_cds,
             "total_etiquetas": total_etiquetas,
@@ -818,9 +876,9 @@ def historico(
         .all()
     )
     return templates.TemplateResponse(
+        request,
         "etiquetas/historico.html",
         {
-            "request": request,
             "etiquetas": etiquetas,
             "total": total,
             "page": page,
@@ -909,8 +967,9 @@ def gerar_etiqueta(
     db.commit()
 
     return templates.TemplateResponse(
+        request,
         "etiquetas/_sucesso.html",
-        {"request": request, "etiquetas": etiquetas_geradas},
+        {"etiquetas": etiquetas_geradas},
     )
 
 
