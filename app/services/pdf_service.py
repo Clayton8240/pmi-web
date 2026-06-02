@@ -1,7 +1,9 @@
 """Geração de etiquetas em PDF com ReportLab — portado do projeto desktop."""
 
 import io
+import math
 import os
+from concurrent.futures import ProcessPoolExecutor
 from datetime import datetime
 from typing import List, Dict
 
@@ -53,6 +55,35 @@ class PDFService:
             )
 
         c.save()
+        return filepath
+
+    def gerar_lote_paralelo(self, lote: List[Dict], workers: int = 4, threshold: int = 500) -> str:
+        """Versão paralela de gerar_lote. Divide o lote em chunks, renderiza
+        cada um em um worker separado e mescla os PDFs.
+        Cai para a versão serial se o lote for pequeno ou workers<=1."""
+        if not lote or workers <= 1 or len(lote) < threshold:
+            return self.gerar_lote(lote)
+
+        # importação tardia para não pagar custo quando não usado
+        from pypdf import PdfReader, PdfWriter
+
+        n = min(workers, len(lote))
+        chunk_size = math.ceil(len(lote) / n)
+        chunks = [lote[i:i + chunk_size] for i in range(0, len(lote), chunk_size)]
+
+        with ProcessPoolExecutor(max_workers=n) as ex:
+            blobs = list(ex.map(_render_chunk_to_bytes, chunks))
+
+        writer = PdfWriter()
+        for blob in blobs:
+            reader = PdfReader(io.BytesIO(blob))
+            for page in reader.pages:
+                writer.add_page(page)
+
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        filepath = os.path.join(OUTPUT_FOLDER, f"LOTE_{timestamp}.pdf")
+        with open(filepath, "wb") as f:
+            writer.write(f)
         return filepath
 
     def gerar_etiqueta(self, dados: Dict, itens: List[Dict], reimpressao: bool = False) -> str:
@@ -388,3 +419,25 @@ class PDFService:
             c.setFont("Helvetica-Bold", 11)
             c.drawRightString(width - ml, height - 4 * mm, "*** REIMPRESSÃO ***")
             c.setFillColor(black)
+
+
+def _render_chunk_to_bytes(chunk: List[Dict]) -> bytes:
+    """Renderiza um chunk de etiquetas em um PDF em memória (usado por workers)."""
+    svc = PDFService()
+    label_size = (150 * mm, 100 * mm)
+    buf = io.BytesIO()
+    c = canvas.Canvas(buf, pagesize=label_size)
+    width, height = label_size
+    for i, item in enumerate(chunk):
+        if i > 0:
+            c.showPage()
+        svc._desenhar(
+            c,
+            item["dados"],
+            item["itens"],
+            item.get("reimpressao", False),
+            width,
+            height,
+        )
+    c.save()
+    return buf.getvalue()

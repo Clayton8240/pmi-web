@@ -137,6 +137,10 @@ def importar_cds_excel(excel_path: str, db: Session, nome_campanha: str | None =
             db.add(material)
             db.flush()
         else:
+            # Reativa se estava desativado (usuário pode ter excluído antes
+            # e a planilha trouxe ele de volta — precisa aparecer no catálogo)
+            if not material.ativo:
+                material.ativo = True
             # Mantém descrição/marca do catálogo atualizadas quando vierem preenchidas
             if descricao and not material.descricao:
                 material.descricao = descricao

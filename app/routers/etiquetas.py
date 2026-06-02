@@ -300,7 +300,7 @@ def gerar_lote(
 
     pdf_lote_filename = ""
     if lote_para_pdf:
-        pdf_lote_path = pdf_svc.gerar_lote(lote_para_pdf)
+        pdf_lote_path = pdf_svc.gerar_lote_paralelo(lote_para_pdf, workers=4)
         pdf_lote_filename = os.path.basename(pdf_lote_path)
     logger.warning("LOTE t4=%.2fs (pdf gerado: %s)",
                    time.monotonic() - t0, pdf_lote_filename)
@@ -670,7 +670,7 @@ def gerar_lote(
     # PDF unificado do lote (multi-página para impressão)
     pdf_lote_filename = ""
     if lote_para_pdf:
-        pdf_lote_path = pdf_svc.gerar_lote(lote_para_pdf)
+        pdf_lote_path = pdf_svc.gerar_lote_paralelo(lote_para_pdf, workers=4)
         pdf_lote_filename = os.path.basename(pdf_lote_path)
 
     return templates.TemplateResponse(
