@@ -314,7 +314,14 @@ class PDFService:
         total_h = 4.0 * mm   # linha de total
         total_qtde = sum(int(it.get("qtde", 0) or 0) for it in itens)
 
-        items_to_draw = itens
+        # Pad até 13 linhas para que todas as etiquetas tenham o mesmo tamanho.
+        ROWS_FIXO = 13
+        items_to_draw = list(itens)
+        if len(items_to_draw) < ROWS_FIXO:
+            items_to_draw = items_to_draw + [
+                {"part_number": "", "marca": "", "descricao": "", "qtde": ""}
+                for _ in range(ROWS_FIXO - len(items_to_draw))
+            ]
 
         def _build_rows(font_size: float):
             line_h = font_size * 0.4 * mm          # 6pt -> 2.4mm (proporcional)

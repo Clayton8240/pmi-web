@@ -11,6 +11,7 @@ from app.services.volume_calc import (
     proximo_num_caixa,
     materiais_pendentes_capacidade,
     montar_pacotes_cd,
+    _bulk_capacidades,
 )
 from app.services.pdf_service import PDFService
 from app.config import OUTPUT_FOLDER, TRANSPORTADORA_PADRAO
@@ -161,21 +162,47 @@ def gerar_lote(
 
     transp = transportador.strip() or TRANSPORTADORA_PADRAO
     hoje = datetime.now().strftime("%d/%m/%Y")
+    import time, logging
+    logger = logging.getLogger("pmi-web.gerar_lote")
+    t0 = time.monotonic()
 
     cds_ids = db.query(ItemCD.cd_id).filter(
         ItemCD.campanha_id == campanha_id
     ).distinct().order_by(ItemCD.cd_id).all()
     cds_ids = [r[0] for r in cds_ids]
 
+    # Pré-carrega tudo em bulk para evitar N+1
+    cap_cache = _bulk_capacidades(db)
+    cds_map = {c.id: c for c in db.query(CD).filter(CD.id.in_(cds_ids)).all()}
+    itens_all = (
+        db.query(ItemCD)
+        .filter(ItemCD.campanha_id == campanha_id)
+        .order_by(ItemCD.cd_id, ItemCD.id)
+        .all()
+    )
+    itens_por_cd: dict[int, list] = {}
+    for it in itens_all:
+        itens_por_cd.setdefault(it.cd_id, []).append(it)
+    logger.warning("LOTE t1=%.2fs (carregou %d cds, %d itens)",
+                   time.monotonic() - t0, len(cds_ids), len(itens_all))
+
     lote_para_pdf: list = []
     etiquetas_geradas: list = []
-    contador_caixa = 1  # sempre começa do 1 para cada geração de lote
+    # Buffer para inserção em lote (muito mais rápido que add+flush por iteração)
+    etiqueta_rows: list[dict] = []
+    item_rows_por_etiqueta_idx: list[list[dict]] = []
+    info_por_etiqueta: list[dict] = []  # cd, dados_pdf, pkg_itens
+    contador_caixa = 1
 
     for cd_id in cds_ids:
-        cd = db.get(CD, cd_id)
+        cd = cds_map.get(cd_id)
         if not cd:
             continue
-        pacotes = montar_pacotes_cd(cd_id, db, campanha_id)
+        pacotes = montar_pacotes_cd(
+            cd_id, db, campanha_id,
+            cap_cache=cap_cache,
+            itens=itens_por_cd.get(cd_id, []),
+        )
         num_caixas = len(pacotes)
         if num_caixas == 0:
             continue
@@ -201,39 +228,72 @@ def gerar_lote(
                 "data": hoje,
             }
 
-            etiqueta = Etiqueta(
-                cd_id=cd_id,
-                campanha_id=campanha_id,
-                num_caixa=prox,
-                volume=volume_str,
-                embalagem=embalagem,
-                projeto=projeto or campanha.nome,
-                transportador=transp,
-                pdf_path=None,
-            )
-            db.add(etiqueta)
-            db.flush()
-
-            for it in pkg_itens:
-                db.add(ItemEtiqueta(
-                    etiqueta_id=etiqueta.id,
-                    part_number=it["part_number"],
-                    marca=it["marca"],
-                    descricao=it["descricao"],
-                    qtde=it["qtde"],
-                ))
-
-            lote_para_pdf.append({"dados": dados_pdf, "itens": pkg_itens})
-            etiquetas_geradas.append({
-                "id": etiqueta.id,
-                "num_caixa": prox,
+            etiqueta_rows.append({
                 "cd_id": cd_id,
-                "cd_cidade": cd.cidade or "",
-                "cd_uf": cd.uf or "",
+                "campanha_id": campanha_id,
+                "num_caixa": prox,
                 "volume": volume_str,
+                "embalagem": embalagem,
+                "projeto": projeto or campanha.nome,
+                "transportador": transp,
+                "pdf_path": None,
+            })
+            item_rows_por_etiqueta_idx.append([
+                {
+                    "part_number": it["part_number"],
+                    "marca": it["marca"],
+                    "descricao": it["descricao"],
+                    "qtde": it["qtde"],
+                }
+                for it in pkg_itens
+            ])
+            info_por_etiqueta.append({
+                "cd": cd, "dados_pdf": dados_pdf, "pkg_itens": pkg_itens,
+                "num_caixa": prox, "volume": volume_str,
+            })
+
+    logger.warning("LOTE t2=%.2fs (montou %d etiquetas em memória)",
+                   time.monotonic() - t0, len(etiqueta_rows))
+
+    # Bulk insert das etiquetas, depois recupera IDs por num_caixa para esta campanha
+    if etiqueta_rows:
+        db.bulk_insert_mappings(Etiqueta, etiqueta_rows)
+        db.flush()
+        # mapeia num_caixa -> id (campanha_id é único por num_caixa nesta sessão)
+        id_por_caixa = dict(
+            db.query(Etiqueta.num_caixa, Etiqueta.id)
+            .filter(Etiqueta.campanha_id == campanha_id)
+            .all()
+        )
+        # monta linhas de itens com etiqueta_id resolvido
+        all_item_rows: list[dict] = []
+        for idx, rows in enumerate(item_rows_por_etiqueta_idx):
+            num_caixa = etiqueta_rows[idx]["num_caixa"]
+            eid = id_por_caixa.get(num_caixa)
+            if eid is None:
+                continue
+            for r in rows:
+                r2 = dict(r)
+                r2["etiqueta_id"] = eid
+                all_item_rows.append(r2)
+        if all_item_rows:
+            db.bulk_insert_mappings(ItemEtiqueta, all_item_rows)
+
+        # popula etiquetas_geradas para o template
+        for idx, info in enumerate(info_por_etiqueta):
+            num_caixa = etiqueta_rows[idx]["num_caixa"]
+            lote_para_pdf.append({"dados": info["dados_pdf"], "itens": info["pkg_itens"]})
+            etiquetas_geradas.append({
+                "id": id_por_caixa.get(num_caixa, 0),
+                "num_caixa": num_caixa,
+                "cd_id": info["cd"].id,
+                "cd_cidade": info["cd"].cidade or "",
+                "cd_uf": info["cd"].uf or "",
+                "volume": info["volume"],
             })
 
     db.commit()
+    logger.warning("LOTE t3=%.2fs (commit db ok)", time.monotonic() - t0)
 
     # Limpa PDFs de lote com mais de 30 dias
     _limpar_lotes_antigos()
@@ -242,6 +302,8 @@ def gerar_lote(
     if lote_para_pdf:
         pdf_lote_path = pdf_svc.gerar_lote(lote_para_pdf)
         pdf_lote_filename = os.path.basename(pdf_lote_path)
+    logger.warning("LOTE t4=%.2fs (pdf gerado: %s)",
+                   time.monotonic() - t0, pdf_lote_filename)
 
     return templates.TemplateResponse(
         request,
