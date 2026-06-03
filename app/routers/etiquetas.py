@@ -454,6 +454,7 @@ def _romaneio_query(db: Session, campanha_id: int | None, busca: str | None):
         )
         .join(CD, CD.id == Etiqueta.cd_id)
         .outerjoin(ItemEtiqueta, ItemEtiqueta.etiqueta_id == Etiqueta.id)
+        .filter(Etiqueta.reimpressao == False)  # noqa: E712 — romaneio mostra só originais
     )
     if campanha_id:
         q = q.filter(Etiqueta.campanha_id == campanha_id)
