@@ -1,0 +1,151 @@
+{% extends "base.html" %}
+{% block title %}Romaneio — PMI{% endblock %}
+{% block page_title %}Romaneio{% endblock %}
+
+{% block content %}
+<div class="space-y-4">
+
+  <!-- Filtros -->
+  <form method="get" action="/etiquetas/romaneio"
+        class="flex gap-2 flex-wrap items-center bg-white border border-gray-200 rounded-xl p-3">
+    <div class="flex gap-2 flex-wrap items-center">
+      <a href="/etiquetas/romaneio{% if busca %}?q={{ busca }}{% endif %}"
+         class="text-xs px-3 py-1.5 rounded-lg border transition-colors {% if not campanha_id_filtro %}bg-blue-600 text-white border-blue-600{% else %}bg-white text-gray-600 border-gray-200 hover:bg-gray-50{% endif %}">
+        Todas as campanhas
+      </a>
+      {% for c in campanhas %}
+      <a href="/etiquetas/romaneio?campanha_id={{ c.id }}{% if busca %}&q={{ busca }}{% endif %}"
+         class="text-xs px-3 py-1.5 rounded-lg border transition-colors {% if campanha_id_filtro == c.id %}bg-blue-600 text-white border-blue-600{% else %}bg-white text-gray-600 border-gray-200 hover:bg-gray-50{% endif %}">
+        {{ c.nome }}
+        {% if c.status == 'ativa' %}<span class="ml-1 opacity-70">●</span>{% endif %}
+      </a>
+      {% endfor %}
+    </div>
+
+    <div class="flex-1"></div>
+
+    <input type="hidden" name="campanha_id" value="{{ campanha_id_filtro or '' }}">
+    <input type="text" name="q" value="{{ busca or '' }}"
+           placeholder="Buscar (caixa, código, cidade, regional, marca...)"
+           class="text-xs px-3 py-1.5 border border-gray-300 rounded-lg w-72 focus:outline-none focus:border-blue-500">
+    <button type="submit"
+            class="text-xs px-3 py-1.5 rounded-lg bg-gray-100 hover:bg-gray-200 border border-gray-200">
+      Filtrar
+    </button>
+
+    <a href="/etiquetas/romaneio.csv?{% if campanha_id_filtro %}campanha_id={{ campanha_id_filtro }}&{% endif %}{% if busca %}q={{ busca }}{% endif %}"
+       class="text-xs px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white inline-flex items-center gap-1">
+      <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+              d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/>
+      </svg>
+      Exportar CSV
+    </a>
+  </form>
+
+  <div class="bg-white rounded-xl border border-gray-200 overflow-hidden">
+    <div class="px-5 py-3 border-b border-gray-100 flex justify-between items-center">
+      <span class="text-sm text-gray-500">
+        {{ total }} linha(s) — página {{ page }} de {{ ((total + per_page - 1) // per_page) if total else 1 }}
+      </span>
+    </div>
+
+    <div class="overflow-x-auto">
+      <table class="w-full text-xs">
+        <thead class="bg-gray-50 text-[11px] text-gray-500 uppercase tracking-wide">
+          <tr>
+            <th class="px-3 py-2 text-left">Nº Caixa</th>
+            <th class="px-3 py-2 text-left">Regional</th>
+            <th class="px-3 py-2 text-left">Filial (Operação)</th>
+            <th class="px-3 py-2 text-left">Cidade</th>
+            <th class="px-3 py-2 text-left">UF</th>
+            <th class="px-3 py-2 text-left">Controle MMBR</th>
+            <th class="px-3 py-2 text-left">Descrição</th>
+            <th class="px-3 py-2 text-left">Pacote (Zona Venda)</th>
+            <th class="px-3 py-2 text-left">Volume</th>
+            <th class="px-3 py-2 text-left">Embalagem</th>
+            <th class="px-3 py-2 text-left">Data / Hora</th>
+            <th class="px-3 py-2 text-left">Código</th>
+            <th class="px-3 py-2 text-left">Marca</th>
+            <th class="px-3 py-2 text-left">Descrição</th>
+            <th class="px-3 py-2 text-right">Qtde</th>
+            <th class="px-3 py-2 text-center">PDF</th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-gray-50">
+          {% for r in linhas %}
+          <tr class="hover:bg-gray-50">
+            <td class="px-3 py-2 font-bold text-blue-700 whitespace-nowrap">
+              #{{ r.num_caixa }}
+              {% if r.reimpressao %}<span class="text-red-500 ml-1 text-[10px]">[REIMP]</span>{% endif %}
+            </td>
+            <td class="px-3 py-2">{{ r.regional or '—' }}</td>
+            <td class="px-3 py-2">{{ r.filial or '—' }}</td>
+            <td class="px-3 py-2">{{ r.cidade or '—' }}</td>
+            <td class="px-3 py-2">{{ r.uf or '—' }}</td>
+            <td class="px-3 py-2 font-mono text-gray-600">{{ r.cd_id }}</td>
+            <td class="px-3 py-2 max-w-xs truncate" title="{{ r.descricao_cd or '' }}">{{ r.descricao_cd or '—' }}</td>
+            <td class="px-3 py-2">{{ r.zona_venda or '—' }}</td>
+            <td class="px-3 py-2 whitespace-nowrap">
+              {% if r.volume %}
+                <span class="bg-blue-50 text-blue-700 px-2 py-0.5 rounded">{{ r.volume }}</span>
+              {% else %}—{% endif %}
+            </td>
+            <td class="px-3 py-2">{{ r.embalagem or '—' }}</td>
+            <td class="px-3 py-2 text-gray-500 whitespace-nowrap">
+              {{ r.gerada_em.strftime('%d/%m/%Y %H:%M') if r.gerada_em else '—' }}
+            </td>
+            <td class="px-3 py-2 font-mono">{{ r.part_number or '—' }}</td>
+            <td class="px-3 py-2">{{ r.marca or '—' }}</td>
+            <td class="px-3 py-2 max-w-xs truncate" title="{{ r.descricao_item or '' }}">{{ r.descricao_item or '—' }}</td>
+            <td class="px-3 py-2 text-right">{{ r.qtde if r.qtde is not none else '—' }}</td>
+            <td class="px-3 py-2 text-center">
+              <div class="flex gap-2 justify-center items-center">
+                {% if r.pdf_path %}
+                <a href="/etiquetas/{{ r.etiqueta_id }}/pdf" target="_blank"
+                   class="text-blue-500 hover:text-blue-700" title="Baixar PDF">
+                  <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                          d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/>
+                  </svg>
+                </a>
+                {% endif %}
+                {% if not r.reimpressao %}
+                <form method="POST" action="/etiquetas/{{ r.etiqueta_id }}/reimprimir"
+                      onsubmit="this.querySelector('button').disabled=true;">
+                  <button type="submit" title="Reimprimir"
+                          class="text-amber-600 hover:text-amber-800 border border-amber-300 hover:border-amber-500 rounded px-1.5 py-0.5">
+                    R
+                  </button>
+                </form>
+                {% endif %}
+              </div>
+            </td>
+          </tr>
+          {% else %}
+          <tr>
+            <td colspan="16" class="px-5 py-10 text-center text-gray-400">
+              Nenhuma etiqueta encontrada.
+              <a href="/etiquetas/lote" class="text-blue-500 hover:underline ml-1">Gerar lote →</a>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    {% if total > per_page %}
+    <div class="px-5 py-3 border-t border-gray-100 flex justify-end gap-2 text-sm">
+      {% if page > 1 %}
+        <a href="?page={{ page - 1 }}{% if campanha_id_filtro %}&campanha_id={{ campanha_id_filtro }}{% endif %}{% if busca %}&q={{ busca }}{% endif %}"
+           class="px-3 py-1 border rounded hover:bg-gray-50">← Anterior</a>
+      {% endif %}
+      {% if page * per_page < total %}
+        <a href="?page={{ page + 1 }}{% if campanha_id_filtro %}&campanha_id={{ campanha_id_filtro }}{% endif %}{% if busca %}&q={{ busca }}{% endif %}"
+           class="px-3 py-1 border rounded hover:bg-gray-50">Próxima →</a>
+      {% endif %}
+    </div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

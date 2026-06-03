@@ -7,7 +7,6 @@ from app.database import get_db
 from app.models import CD, ItemCD, Etiqueta, ItemEtiqueta, Campanha, Material, VolumePorCaixa
 from app.routers import templates
 from app.services.volume_calc import (
-    calcular_volume_cd,
     proximo_num_caixa,
     materiais_pendentes_capacidade,
     montar_pacotes_cd,
@@ -429,34 +428,126 @@ def pagina_gerar(request: Request, db: Session = Depends(get_db)):
     )
 
 
+def _romaneio_query(db: Session, campanha_id: int | None, busca: str | None):
+    """Monta a query do romaneio (uma linha por item de etiqueta)."""
+    from sqlalchemy import or_
+    q = (
+        db.query(
+            Etiqueta.id.label("etiqueta_id"),
+            Etiqueta.num_caixa,
+            Etiqueta.volume,
+            Etiqueta.embalagem,
+            Etiqueta.gerada_em,
+            Etiqueta.pdf_path,
+            Etiqueta.reimpressao,
+            CD.id.label("cd_id"),
+            CD.regional,
+            CD.filial,
+            CD.cidade,
+            CD.uf,
+            CD.zona_venda,
+            CD.descricao_pacote.label("descricao_cd"),
+            ItemEtiqueta.part_number,
+            ItemEtiqueta.marca,
+            ItemEtiqueta.descricao.label("descricao_item"),
+            ItemEtiqueta.qtde,
+        )
+        .join(CD, CD.id == Etiqueta.cd_id)
+        .outerjoin(ItemEtiqueta, ItemEtiqueta.etiqueta_id == Etiqueta.id)
+    )
+    if campanha_id:
+        q = q.filter(Etiqueta.campanha_id == campanha_id)
+    if busca:
+        termo = f"%{busca.strip()}%"
+        q = q.filter(or_(
+            CD.regional.ilike(termo),
+            CD.filial.ilike(termo),
+            CD.cidade.ilike(termo),
+            CD.uf.ilike(termo),
+            CD.zona_venda.ilike(termo),
+            CD.descricao_pacote.ilike(termo),
+            ItemEtiqueta.part_number.ilike(termo),
+            ItemEtiqueta.marca.ilike(termo),
+            ItemEtiqueta.descricao.ilike(termo),
+        ))
+    return q.order_by(Etiqueta.gerada_em.desc(), Etiqueta.num_caixa.desc(), ItemEtiqueta.id.asc())
+
+
 @router.get("/historico")
-def historico(
+def historico_redirect(campanha_id: int | None = Query(default=None)):
+    suffix = f"?campanha_id={campanha_id}" if campanha_id else ""
+    return RedirectResponse(url=f"/etiquetas/romaneio{suffix}", status_code=307)
+
+
+@router.get("/romaneio")
+def romaneio(
     request: Request,
     db: Session = Depends(get_db),
     page: int = Query(default=1, ge=1),
     campanha_id: int | None = Query(default=None),
+    q: str | None = Query(default=None, alias="q"),
 ):
-    per_page = 50
-    q = db.query(Etiqueta)
-    if campanha_id:
-        q = q.filter(Etiqueta.campanha_id == campanha_id)
-    total = q.count()
-    etiquetas = q.order_by(Etiqueta.gerada_em.desc()).offset((page - 1) * per_page).limit(per_page).all()
+    per_page = 100
+    base_q = _romaneio_query(db, campanha_id, q)
+    total = base_q.count()
+    linhas = base_q.offset((page - 1) * per_page).limit(per_page).all()
     campanhas = db.query(Campanha).order_by(Campanha.criada_em.desc()).all()
-    campanha_atual = db.get(Campanha, campanha_id) if campanha_id else None
     return templates.TemplateResponse(
         request,
-        "etiquetas/historico.html",
+        "etiquetas/romaneio.html",
         {
-            "etiquetas": etiquetas,
+            "linhas": linhas,
             "total": total,
             "page": page,
             "per_page": per_page,
             "active_page": "historico",
             "campanhas": campanhas,
             "campanha_id_filtro": campanha_id,
-            "campanha_atual": campanha_atual,
+            "busca": q or "",
         },
+    )
+
+
+@router.get("/romaneio.csv")
+def romaneio_csv(
+    db: Session = Depends(get_db),
+    campanha_id: int | None = Query(default=None),
+    q: str | None = Query(default=None, alias="q"),
+):
+    import csv, io
+    linhas = _romaneio_query(db, campanha_id, q).all()
+    buf = io.StringIO()
+    buf.write("\ufeff")  # BOM para Excel
+    writer = csv.writer(buf, delimiter=";")
+    writer.writerow([
+        "Nº CAIXA", "REGIONAL", "FILIAL (OPERAÇÃO)", "CIDADE", "UF",
+        "CONTROLE MMBR", "DESCRIÇÃO", "PACOTE (ZONA VENDA)", "VOLUME",
+        "EMBALAGEM", "DATA / HORA", "CODIGO", "MARCA", "DESCRIÇÃO", "QTDE",
+    ])
+    for r in linhas:
+        writer.writerow([
+            r.num_caixa,
+            r.regional or "",
+            r.filial or "",
+            r.cidade or "",
+            r.uf or "",
+            r.cd_id,
+            r.descricao_cd or "",
+            r.zona_venda or "",
+            r.volume or "",
+            r.embalagem or "",
+            r.gerada_em.strftime("%d/%m/%Y %H:%M") if r.gerada_em else "",
+            r.part_number or "",
+            r.marca or "",
+            r.descricao_item or "",
+            r.qtde if r.qtde is not None else "",
+        ])
+    stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    filename = f"romaneio_{stamp}.csv"
+    return Response(
+        content=buf.getvalue(),
+        media_type="text/csv; charset=utf-8",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
 
 
@@ -525,509 +616,6 @@ def gerar_etiqueta(
         etiquetas_geradas.append({"id": etiqueta.id, "num_caixa": prox, "pdf_path": pdf_path})
 
     db.commit()
-    return templates.TemplateResponse(
-        request,
-        "etiquetas/_sucesso.html",
-        {"etiquetas": etiquetas_geradas},
-    )
-
-
-@router.get("/{etiqueta_id}/pdf")
-def download_pdf(etiqueta_id: int, db: Session = Depends(get_db)):
-    etiqueta = db.get(Etiqueta, etiqueta_id)
-    if not etiqueta or not etiqueta.pdf_path:
-        return HTMLResponse("PDF não encontrado", status_code=404)
-    return FileResponse(
-        etiqueta.pdf_path,
-        media_type="application/pdf",
-        filename=f"etiqueta_caixa_{etiqueta.num_caixa}.pdf",
-    )
-
-
-
-# ---------------------------------------------------------------------------
-# Gerar Lote (todas as etiquetas da campanha de uma vez)
-# ---------------------------------------------------------------------------
-
-@router.get("/lote")
-def pagina_lote(request: Request, db: Session = Depends(get_db)):
-    cds = db.query(CD).filter(CD.ativo == True).order_by(CD.id).all()  # noqa
-    cds_info = []
-    total_caixas = 0
-    for cd in cds:
-        itens = db.query(ItemCD).filter(ItemCD.cd_id == cd.id).all()
-        volume_info = calcular_volume_cd(cd.id, db)
-        n = max(1, volume_info["num_caixas"])
-        total_caixas += n
-        cds_info.append({
-            "cd": cd,
-            "num_itens": len(itens),
-            "num_caixas": n,
-            "volume_texto": volume_info["volume_texto"],
-        })
-    prox_caixa = proximo_num_caixa(db)
-    return templates.TemplateResponse(
-        request,
-        "etiquetas/lote.html",
-        {
-            "active_page": "lote",
-            "cds_info": cds_info,
-            "total_caixas": total_caixas,
-            "prox_caixa": prox_caixa,
-            "transportador_padrao": TRANSPORTADORA_PADRAO,
-        },
-    )
-
-
-@router.post("/lote")
-def gerar_lote(
-    request: Request,
-    embalagem: str = Form(default=""),
-    projeto: str = Form(default=""),
-    transportador: str = Form(default=""),
-    db: Session = Depends(get_db),
-):
-    cds = db.query(CD).filter(CD.ativo == True).order_by(CD.id).all()  # noqa
-    transp = transportador.strip() or TRANSPORTADORA_PADRAO
-    hoje = datetime.now().strftime("%d/%m/%Y")
-
-    lote_para_pdf: list = []
-    etiquetas_geradas: list = []
-    contador_caixa = 1  # sempre começa do 1 para cada geração de lote
-
-    for cd in cds:
-        itens = db.query(ItemCD).filter(ItemCD.cd_id == cd.id).all()
-        itens_dict = [
-            {
-                "part_number": it.part_number,
-                "marca": it.marca,
-                "descricao": it.descricao,
-                "qtde": it.qtde,
-            }
-            for it in itens
-        ]
-        volume_info = calcular_volume_cd(cd.id, db)
-        num_caixas = max(1, volume_info["num_caixas"])
-        vol_texto = volume_info["volume_texto"] or ""
-
-        for idx in range(num_caixas):
-            prox = contador_caixa
-            contador_caixa += 1
-            volume_str = f"{idx + 1}/{num_caixas}" if num_caixas > 1 else (vol_texto or "1/1")
-
-            dados_pdf = {
-                "num_caixa": prox,
-                "cd_id": cd.id,
-                "cnpj": cd.cnpj or "",
-                "regional": cd.regional or "",
-                "filial": cd.filial or "",
-                "cidade": cd.cidade or "",
-                "uf": cd.uf or "",
-                "zona_venda": cd.zona_venda or "",
-                "volume": volume_str,
-                "embalagem": embalagem,
-                "projeto": projeto,
-                "transportador": transp,
-                "data": hoje,
-            }
-
-            etiqueta = Etiqueta(
-                cd_id=cd.id,
-                num_caixa=prox,
-                volume=volume_str,
-                embalagem=embalagem,
-                projeto=projeto,
-                transportador=transp,
-                pdf_path=None,
-            )
-            db.add(etiqueta)
-            db.flush()
-
-            for it in itens:
-                db.add(ItemEtiqueta(
-                    etiqueta_id=etiqueta.id,
-                    part_number=it.part_number,
-                    marca=it.marca,
-                    descricao=it.descricao,
-                    qtde=it.qtde,
-                ))
-
-            lote_para_pdf.append({"dados": dados_pdf, "itens": itens_dict})
-            etiquetas_geradas.append({
-                "id": etiqueta.id,
-                "num_caixa": prox,
-                "cd_id": cd.id,
-                "cd_cidade": cd.cidade or "",
-                "cd_uf": cd.uf or "",
-                "volume": volume_str,
-            })
-
-    db.commit()
-
-    # Limpa PDFs de lote com mais de 30 dias
-    _limpar_lotes_antigos()
-
-    # PDF unificado do lote (multi-página para impressão)
-    pdf_lote_filename = ""
-    if lote_para_pdf:
-        pdf_lote_path = pdf_svc.gerar_lote_paralelo(lote_para_pdf, workers=4)
-        pdf_lote_filename = os.path.basename(pdf_lote_path)
-
-    return templates.TemplateResponse(
-        request,
-        "etiquetas/_sucesso_lote.html",
-        {
-            "etiquetas": etiquetas_geradas,
-            "pdf_lote_filename": pdf_lote_filename,
-            "total": len(etiquetas_geradas),
-        },
-    )
-
-
-@router.get("/lote/pdf/{filename}")
-def download_pdf_lote(filename: str):
-    """Serve o PDF de lote unificado."""
-    # Segurança: impede path traversal
-    if "/" in filename or "\\" in filename or ".." in filename:
-        return HTMLResponse("Arquivo inválido.", status_code=400)
-    path = os.path.join(OUTPUT_FOLDER, filename)
-    if not os.path.exists(path):
-        return HTMLResponse("PDF não encontrado.", status_code=404)
-    return FileResponse(path, media_type="application/pdf", filename=filename)
-
-
-# ---------------------------------------------------------------------------
-# Reimpressão de etiqueta individual
-# ---------------------------------------------------------------------------
-
-@router.post("/{etiqueta_id}/reimprimir")
-def reimprimir(etiqueta_id: int, db: Session = Depends(get_db)):
-    """Gera uma reimpressão de uma etiqueta já registrada."""
-    original = db.get(Etiqueta, etiqueta_id)
-    if not original:
-        return HTMLResponse("Etiqueta não encontrada.", status_code=404)
-
-    itens_originais = db.query(ItemEtiqueta).filter(
-        ItemEtiqueta.etiqueta_id == etiqueta_id
-    ).all()
-    itens_dict = [
-        {
-            "part_number": it.part_number,
-            "marca": it.marca,
-            "descricao": it.descricao,
-            "qtde": it.qtde,
-        }
-        for it in itens_originais
-    ]
-
-    cd = db.get(CD, original.cd_id)
-    dados_pdf = {
-        "num_caixa": original.num_caixa,
-        "cd_id": original.cd_id,
-        "cnpj": cd.cnpj if cd else "",
-        "regional": cd.regional if cd else "",
-        "filial": cd.filial if cd else "",
-        "cidade": cd.cidade if cd else "",
-        "uf": cd.uf if cd else "",
-        "zona_venda": cd.zona_venda if cd else "",
-        "volume": original.volume or "",
-        "embalagem": original.embalagem or "",
-        "projeto": original.projeto or "",
-        "transportador": original.transportador or TRANSPORTADORA_PADRAO,
-        "data": datetime.now().strftime("%d/%m/%Y"),
-    }
-
-    pdf_path = pdf_svc.gerar_etiqueta(dados_pdf, itens_dict, reimpressao=True)
-
-    reimp = Etiqueta(
-        cd_id=original.cd_id,
-        num_caixa=original.num_caixa,
-        volume=original.volume,
-        embalagem=original.embalagem,
-        projeto=original.projeto,
-        transportador=original.transportador,
-        pdf_path=pdf_path,
-        reimpressao=True,
-    )
-    db.add(reimp)
-    db.flush()
-    for it in itens_dict:
-        db.add(ItemEtiqueta(
-            etiqueta_id=reimp.id,
-            part_number=it["part_number"],
-            marca=it["marca"],
-            descricao=it["descricao"],
-            qtde=it["qtde"],
-        ))
-    db.commit()
-
-    return RedirectResponse(url=f"/etiquetas/{reimp.id}/pdf", status_code=303)
-
-
-# ---------------------------------------------------------------------------
-# Página de geração individual (mantida para casos avulsos)
-# ---------------------------------------------------------------------------
-
-@router.get("/gerar")
-def pagina_gerar(request: Request, db: Session = Depends(get_db)):
-    total_cds = db.query(CD).filter(CD.ativo == True).count()  # noqa
-    total_etiquetas = db.query(Etiqueta).count()
-    return templates.TemplateResponse(
-        request,
-        "etiquetas/gerar.html",
-        {
-            "active_page": "gerar",
-            "total_cds": total_cds,
-            "total_etiquetas": total_etiquetas,
-        },
-    )
-
-
-@router.get("/historico")
-def historico(
-    request: Request,
-    db: Session = Depends(get_db),
-    page: int = Query(default=1, ge=1),
-):
-    per_page = 50
-    total = db.query(Etiqueta).count()
-    etiquetas = (
-        db.query(Etiqueta)
-        .order_by(Etiqueta.gerada_em.desc())
-        .offset((page - 1) * per_page)
-        .limit(per_page)
-        .all()
-    )
-    return templates.TemplateResponse(
-        request,
-        "etiquetas/historico.html",
-        {
-            "etiquetas": etiquetas,
-            "total": total,
-            "page": page,
-            "per_page": per_page,
-            "active_page": "historico",
-        },
-    )
-
-
-@router.post("/")
-def gerar_etiqueta(
-    request: Request,
-    cd_id: int = Form(...),
-    volume: str = Form(default=""),
-    num_caixas: int = Form(default=1),
-    embalagem: str = Form(default=""),
-    projeto: str = Form(default=""),
-    transportador: str = Form(default=""),
-    db: Session = Depends(get_db),
-):
-    cd = db.get(CD, cd_id)
-    if not cd:
-        return HTMLResponse('<p class="text-red-600">CD não encontrado.</p>')
-
-    itens = db.query(ItemCD).filter(ItemCD.cd_id == cd_id).all()
-    itens_dict = [
-        {
-            "part_number": it.part_number,
-            "marca": it.marca,
-            "descricao": it.descricao,
-            "qtde": it.qtde,
-        }
-        for it in itens
-    ]
-
-    transp = transportador.strip() or TRANSPORTADORA_PADRAO
-    hoje = datetime.now().strftime("%d/%m/%Y")
-    etiquetas_geradas = []
-
-    for _ in range(max(1, num_caixas)):
-        prox = proximo_num_caixa(db)
-
-        dados_pdf = {
-            "num_caixa": prox,
-            "cd_id": cd_id,
-            "cnpj": cd.cnpj or "",
-            "regional": cd.regional or "",
-            "filial": cd.filial or "",
-            "cidade": cd.cidade or "",
-            "uf": cd.uf or "",
-            "zona_venda": cd.zona_venda or "",
-            "volume": volume,
-            "embalagem": embalagem,
-            "projeto": projeto,
-            "transportador": transp,
-            "data": hoje,
-        }
-
-        pdf_path = pdf_svc.gerar_etiqueta(dados_pdf, itens_dict)
-
-        etiqueta = Etiqueta(
-            cd_id=cd_id,
-            num_caixa=prox,
-            volume=volume,
-            embalagem=embalagem,
-            projeto=projeto,
-            transportador=transp,
-            pdf_path=pdf_path,
-        )
-        db.add(etiqueta)
-        db.flush()
-
-        for it in itens:
-            db.add(ItemEtiqueta(
-                etiqueta_id=etiqueta.id,
-                part_number=it.part_number,
-                marca=it.marca,
-                descricao=it.descricao,
-                qtde=it.qtde,
-            ))
-
-        etiquetas_geradas.append({"id": etiqueta.id, "num_caixa": prox, "pdf_path": pdf_path})
-
-    db.commit()
-
-    return templates.TemplateResponse(
-        request,
-        "etiquetas/_sucesso.html",
-        {"etiquetas": etiquetas_geradas},
-    )
-
-
-@router.get("/{etiqueta_id}/pdf")
-def download_pdf(etiqueta_id: int, db: Session = Depends(get_db)):
-    etiqueta = db.get(Etiqueta, etiqueta_id)
-    if not etiqueta or not etiqueta.pdf_path:
-        return HTMLResponse("PDF não encontrado", status_code=404)
-    return FileResponse(
-        etiqueta.pdf_path,
-        media_type="application/pdf",
-        filename=f"etiqueta_caixa_{etiqueta.num_caixa}.pdf",
-    )
-
-
-
-@router.get("/gerar")
-def pagina_gerar(request: Request, db: Session = Depends(get_db)):
-    total_cds = db.query(CD).filter(CD.ativo == True).count()  # noqa
-    total_etiquetas = db.query(Etiqueta).count()
-    return templates.TemplateResponse(
-        request,
-        "etiquetas/gerar.html",
-        {
-            "active_page": "gerar",
-            "total_cds": total_cds,
-            "total_etiquetas": total_etiquetas,
-        },
-    )
-
-
-@router.get("/historico")
-def historico(
-    request: Request,
-    db: Session = Depends(get_db),
-    page: int = Query(default=1, ge=1),
-):
-    per_page = 50
-    total = db.query(Etiqueta).count()
-    etiquetas = (
-        db.query(Etiqueta)
-        .order_by(Etiqueta.gerada_em.desc())
-        .offset((page - 1) * per_page)
-        .limit(per_page)
-        .all()
-    )
-    return templates.TemplateResponse(
-        request,
-        "etiquetas/historico.html",
-        {
-            "etiquetas": etiquetas,
-            "total": total,
-            "page": page,
-            "per_page": per_page,
-            "active_page": "historico",
-        },
-    )
-
-
-@router.post("/")
-def gerar_etiqueta(
-    request: Request,
-    cd_id: int = Form(...),
-    volume: str = Form(default=""),
-    num_caixas: int = Form(default=1),
-    embalagem: str = Form(default=""),
-    projeto: str = Form(default=""),
-    transportador: str = Form(default=""),
-    db: Session = Depends(get_db),
-):
-    cd = db.get(CD, cd_id)
-    if not cd:
-        return HTMLResponse('<p class="text-red-600">CD não encontrado.</p>')
-
-    itens = db.query(ItemCD).filter(ItemCD.cd_id == cd_id).all()
-    itens_dict = [
-        {
-            "part_number": it.part_number,
-            "marca": it.marca,
-            "descricao": it.descricao,
-            "qtde": it.qtde,
-        }
-        for it in itens
-    ]
-
-    transp = transportador.strip() or TRANSPORTADORA_PADRAO
-    hoje = datetime.now().strftime("%d/%m/%Y")
-    etiquetas_geradas = []
-
-    for _ in range(max(1, num_caixas)):
-        prox = proximo_num_caixa(db)
-
-        # Dados para o PDF
-        dados_pdf = {
-            "num_caixa": prox,
-            "cd_id": cd_id,
-            "cnpj": cd.cnpj or "",
-            "regional": cd.regional or "",
-            "filial": cd.filial or "",
-            "cidade": cd.cidade or "",
-            "uf": cd.uf or "",
-            "zona_venda": cd.zona_venda or "",
-            "volume": volume,
-            "embalagem": embalagem,
-            "projeto": projeto,
-            "transportador": transp,
-            "data": hoje,
-        }
-
-        pdf_path = pdf_svc.gerar_etiqueta(dados_pdf, itens_dict)
-
-        # Persiste etiqueta
-        etiqueta = Etiqueta(
-            cd_id=cd_id,
-            num_caixa=prox,
-            volume=volume,
-            embalagem=embalagem,
-            projeto=projeto,
-            transportador=transp,
-            pdf_path=pdf_path,
-        )
-        db.add(etiqueta)
-        db.flush()
-
-        for it in itens:
-            db.add(ItemEtiqueta(
-                etiqueta_id=etiqueta.id,
-                part_number=it.part_number,
-                marca=it.marca,
-                descricao=it.descricao,
-                qtde=it.qtde,
-            ))
-
-        etiquetas_geradas.append({"id": etiqueta.id, "num_caixa": prox, "pdf_path": pdf_path})
-
-    db.commit()
-
     return templates.TemplateResponse(
         request,
         "etiquetas/_sucesso.html",
