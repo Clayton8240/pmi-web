@@ -354,9 +354,13 @@ class PDFService:
                 for _ in range(ROWS_FIXO - len(items_to_draw))
             ]
 
-        def _build_rows(font_size: float):
-            line_h = font_size * 0.4 * mm          # 6pt -> 2.4mm (proporcional)
-            min_row_h = max(3.5 * mm, line_h + ITEM_PAD)
+        # Apenas a coluna MARCA (índice 1) tem fonte variável; as demais
+        # mantêm tamanho fixo (ITEM_SIZE_BASE) para preservar legibilidade.
+        def _build_rows(marca_size: float):
+            other_size = ITEM_SIZE_BASE
+            sizes = [other_size, marca_size, other_size, other_size]
+            line_hs = [s * 0.4 * mm for s in sizes]
+            min_row_h = max(3.5 * mm, max(line_hs) + ITEM_PAD)
             data = []
             for item in items_to_draw:
                 vals_row = [
@@ -365,32 +369,34 @@ class PDFService:
                     str(item.get("descricao", "")),
                     str(item.get("qtde", "")),
                 ]
-                all_lines = [wrap_text(vals_row[i], ITEM_FONT, font_size, cw[i] - 6) for i in range(len(cw))]
-                max_lines = max(len(ls) for ls in all_lines)
-                nat_h = max(min_row_h, max_lines * line_h + ITEM_PAD)
+                all_lines = [wrap_text(vals_row[i], ITEM_FONT, sizes[i], cw[i] - 6) for i in range(len(cw))]
+                col_heights = [len(all_lines[i]) * line_hs[i] + ITEM_PAD for i in range(len(cw))]
+                nat_h = max(min_row_h, max(col_heights))
                 data.append((all_lines, nat_h))
-            return data, line_h, sum(d[1] for d in data)
+            return data, line_hs, sum(d[1] for d in data)
 
         # Espaço disponível para itens + linha de total (3 mm de margem de segurança)
         items_area = y - foot_h - 3 * mm
         avail_rows = max(0.0, items_area - total_h)
 
-        # Tenta reduzir a fonte até que toda a lista caiba sem comprimir
+        # Tenta reduzir somente a fonte da MARCA até que toda a lista caiba.
         chosen_size = ITEM_SIZE_BASE
-        items_data, line_h, total_natural = _build_rows(chosen_size)
+        items_data, line_hs, total_natural = _build_rows(chosen_size)
         while total_natural > avail_rows and chosen_size > ITEM_SIZE_MIN:
             chosen_size = max(ITEM_SIZE_MIN, chosen_size - 0.25)
-            items_data, line_h, total_natural = _build_rows(chosen_size)
+            items_data, line_hs, total_natural = _build_rows(chosen_size)
 
-        ITEM_SIZE = chosen_size
-        ITEM_LINE_H = line_h
+        ITEM_SIZE = ITEM_SIZE_BASE
+        ITEM_LINE_H = line_hs[0]
+        MARCA_SIZE = chosen_size
 
         if total_natural <= avail_rows:
             row_heights = [d[1] for d in items_data]
         else:
             # Mesmo na fonte mínima ainda passa — comprime uniformemente
             n = len(items_data)
-            uniform_h = max(line_h + ITEM_PAD, avail_rows / n) if n > 0 else line_h + ITEM_PAD
+            min_h = max(line_hs) + ITEM_PAD
+            uniform_h = max(min_h, avail_rows / n) if n > 0 else min_h
             row_heights = [min(d[1], uniform_h) for d in items_data]
 
         # QTDE em fonte maior e em negrito para legibilidade, mas limitada
@@ -404,8 +410,12 @@ class PDFService:
                 if i == 3:
                     draw_cell_wrapped(x, y - row_h, w, row_h, all_lines[i], align,
                                       font_size=qtde_size, bold=True)
+                elif i == 1:
+                    draw_cell_wrapped(x, y - row_h, w, row_h, all_lines[i], align,
+                                      font_size=MARCA_SIZE)
                 else:
-                    draw_cell_wrapped(x, y - row_h, w, row_h, all_lines[i], align)
+                    draw_cell_wrapped(x, y - row_h, w, row_h, all_lines[i], align,
+                                      font_size=ITEM_SIZE)
                 x += w
             y -= row_h
 

@@ -2,7 +2,7 @@
 
 from datetime import datetime
 from sqlalchemy.orm import Session
-from app.models import CD, ItemCD, Material, Campanha
+from app.models import CD, ItemCD, Material, Campanha, VolumePorCaixa
 
 
 def importar_cds_excel(excel_path: str, db: Session, nome_campanha: str | None = None) -> dict:
@@ -159,6 +159,23 @@ def importar_cds_excel(excel_path: str, db: Session, nome_campanha: str | None =
         itens_inseridos += 1
 
     db.commit()
+
+    # Desativa capacidades anteriores dos materiais desta campanha para
+    # forçar o usuário a informar as quantidades por pacote a cada nova
+    # importação (cada lote pode ter quantidades diferentes).
+    mat_ids = [
+        r[0] for r in db.query(ItemCD.material_id)
+        .filter(ItemCD.campanha_id == campanha_id)
+        .filter(ItemCD.material_id.isnot(None))
+        .distinct()
+        .all()
+    ]
+    if mat_ids:
+        db.query(VolumePorCaixa).filter(
+            VolumePorCaixa.material_id.in_(mat_ids),
+            VolumePorCaixa.ativo == True,  # noqa: E712
+        ).update({"ativo": False}, synchronize_session=False)
+        db.commit()
 
     return {
         "cds_inseridos": cds_inseridos,

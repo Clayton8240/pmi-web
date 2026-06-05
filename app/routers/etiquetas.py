@@ -191,7 +191,7 @@ def gerar_lote(
     etiqueta_rows: list[dict] = []
     item_rows_por_etiqueta_idx: list[list[dict]] = []
     info_por_etiqueta: list[dict] = []  # cd, dados_pdf, pkg_itens
-    contador_caixa = 1
+    contador_caixa = proximo_num_caixa(db, campanha_id)
 
     for cd_id in cds_ids:
         cd = cds_map.get(cd_id)
